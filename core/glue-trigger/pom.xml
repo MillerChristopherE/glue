@@ -179,7 +179,7 @@
 					</execution>
 				</executions>
 			</plugin>
-			<plugin>
+			<!--<plugin>
 				<groupId>com.objectdriven.maven</groupId>
 				<artifactId>maven-zookeeper-plugin</artifactId>
 				<version>1.0-SNAPSHOT</version>
@@ -195,7 +195,7 @@
 						</goals>
 					</execution>
 				</executions>
-			</plugin>
+			</plugin>-->
 		</plugins>
 	</build>
 </project>
