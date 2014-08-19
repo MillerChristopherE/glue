@@ -32,10 +32,8 @@ public class BqModule implements GlueModule {
 	
 	GlueContext ctx
 	
+    String binPath = "bq";
 	Map<String, ConfigObject> connections=[:];
-	//String defaultConnection = null;
-	
-    Map<String, Bigquery> cachedServices=[:];
     
 	void destroy(){
 	}
@@ -60,32 +58,10 @@ public class BqModule implements GlueModule {
 		if(!config.connections) {
 			new ModuleConfigurationException("Can't find any connections in config!")
 		}
+        binPath = config.binPath ?: binPath;
 		config.connections.each { String key, ConfigObject c ->
 			print "loading connection $key"
-            
-            /*
-			if(c.isDefault) {
-				defaultConnection=key;
-			}
-			//set the default connections to the first key if not set
-			//if c.isDefault is specified this will be overwritten above
-			if(!defaultConnection)
-				defaultConnection = key;
-            */
-            
-            if(!c.account){
-                throw new ModuleConfigurationException("The account for $key was not set")
-            }
-			
-            if(!c.keyFile || !new File(c.keyFile.toString()).exists()){
-                throw new ModuleConfigurationException("The keyFile for $key was not found")
-            }
-            
-            if(!c.project){
-                throw new ModuleConfigurationException("The project for $key was not set")
-            }
-
-			connections[key]=c
+			connections[key] = c
 		}
         
 	}
@@ -94,7 +70,6 @@ public class BqModule implements GlueModule {
     public Map getInfo() {
         return [
             'connections': this.connections,
-            //'defaultConnection': this.defaultConnection,
         ]
     }
 
@@ -131,240 +106,463 @@ public class BqModule implements GlueModule {
     // Module user functions:
     
     /// Get glue config for the connection.
-    ConfigObject getConnectionConfig(GlueContext context, String connection)
+    Map getConnectionConfig(GlueContext context, String connection)
     {
         if(!connections[connection])
         {
-            throw new ModuleConfigurationException("No such bq connection named $connection")
+            throw new ModuleConfigurationException("No such bq connection named $connection");
         }
         return connections[connection];
     }
-
-    /// Get a service builder.
-    Bigquery.Builder getServiceBuilder(GlueContext context, String connection)
-    {
-        ConfigObject c = getConnectionConfig(contect, connection);
-        
-        HttpTransport httpTransport = new NetHttpTransport();
-        JsonFactory jsonFactory = new JacksonFactory();
-
-        File keyFile = new File(c.keyFile.toString());
-
-        GoogleCredential.Builder credBuilder = new GoogleCredential.Builder();
-        credBuilder.setJsonFactory(jsonFactory);
-        credBuilder.setTransport(httpTransport);
-        credBuilder.setServiceAccountId(c.account.toString());
-        credBuilder.setServiceAccountPrivateKeyFromP12File(keyFile);
-        credBuilder.setServiceAccountScopes(Collections.singleton(BigqueryScopes.BIGQUERY));
-
-        GoogleCredential credentials = credBuilder.build();
-
-        return new Bigquery.Builder(httpTransport, jsonFactory, credentials);
-            
-    }
     
-    /// Build a new service. Consider using getService to use a cached service. This method does not set the cached service.
-    Bigquery buildService(GlueContext context, String connection)
+    void appendOptions(GlueContext context, String connection, Map options, List<String> append, boolean isCommon=false)
     {
-        Bigquery service = getServiceBuilder(context, connection);
-        if(service == null || service.jobs() == null)
-        {
-            throw new NullPointerException("Service is null (bq)");
-        }
-        return service;
-    }
-    
-    /// Allows specifying if the cached service should be replaced.
-    Bigquery getService(GlueContext context, String connection, boolean getNewCache)
-    {
-        Bigquery service = cachedServices[connection];
-        if(service)
-        {
-            if(getNewCache)
+        options.each { k1, v ->
+            String k = k1.toString();
+            assert k.length() > 0, "Invalid empty key"
+            if(v == false)
             {
-                //service.close();
-                service = null;
-                cachedServices[connection] = null;
+                assert k.length() > 1, "Must use long name when setting option to false (key.length is 1 for $k)"
+                append << "--no$k"
             }
             else
             {
-                return service;
-            }
-        }
-        service = buildService(context, connection);
-        cachedServices[connection] = service;
-        return service;
-    }
-    
-    /// Gets the cached service, or creates one if not created yet.
-    Bigquery getService(GlueContext context, String connection)
-    {
-        return getService(context, connection, false);
-    }
-    
-    ///
-    Dataset referenceDataset(GlueContext context, String connection, String dataset)
-    {
-        ConfigObject c = getConnectionConfig(contect, connection);
-        
-        DatasetReference datasetRef = new DatasetReference();
-        datasetRef.setProjectId(c.project.toString());
-        datasetRef.setDatasetId(dataset);
-        
-        Dataset ds = new Dataset();
-        ds.setDatasetReference(datasetRef);
-        
-        return ds;
-    }
-    
-    ///
-    Bigquery.Datasets.Insert getDatasetInsertRequest(GlueContext context, String connection, Dataset dataset)
-    {
-        ConfigObject c = getConnectionConfig(contect, connection);
-        return getService(context, connection).datasets().insert(c.project.toString(), dataset);
-    }
-    
-    ///
-    Bigquery.Datasets.Insert getDatasetInsertRequest(GlueContext context, String connection, String dataset)
-    {
-        return getDatasetInsertRequest(context, connection, referenceDataset(context, connection, dataset));
-    }
-    
-    ///
-    Dataset insertDataset(GlueContext context, String connection, Dataset dataset)
-    {
-        return getDatasetInsertRequest(context, connection, dataset).execute();
-    }
-    
-    ///
-    Dataset insertDataset(GlueContext context, String connection, String dataset)
-    {
-        return getDatasetInsertRequest(context, connection, dataset).execute();
-    }
-    
-    ///
-    Job getLoadJob(GlueContext context, String connection, String dataset, String destTable, String schema, Map options)
-    {
-        ConfigObject c = getConnectionConfig(contect, connection);
-        
-        TableReference destinationTable = new TableReference();
-        destinationTable.setProjectId(c.project.toString());
-        destinationTable.setDatasetId(dataset);
-        destinationTable.setTableId(destTable);
-        
-        JobConfigurationLoad jobLoad = new JobConfigurationLoad();
-        jobLoad.setSchema(getTableSchema(schema));
-        jobLoad.setSourceFormat(options.format ?: "CSV");
-        jobLoad.setDestinationTable(destinationTable);
-        jobLoad.setCreateDisposition(options.create == true ? "CREATE_IF_NEEDED" : "CREATE_NEVER");
-        jobLoad.setWriteDisposition(options.replace == true ? "WRITE_TRUNCATE" :
-            (options.append == true ? "WRITE_APPEND" : "WRITE_EMPTY")
-            );
-        
-        JobConfiguration jobConfig = new JobConfiguration();
-        jobConfig.setLoad(jobLoad);
-
-        JobReference jobRef = new JobReference();
-        jobRef.setProjectId(c.project.toString());
-        if(options.jobId)
-        {
-            jobRef.setJobId(options.jobId);
-        }
-
-        Job job = new Job();
-        job.setConfiguration(jobConfig);
-        job.setJobReference(jobRef);
-        
-        return job;
-    }
-    
-    /// Does not honor options.content_type because the contents object specifies the type.
-    Bigquery.Jobs.Insert getJobLoadInsertRequest(GlueContext context, String connection, String dataset, String destTable,
-        String schema, Map options, AbstractInputStreamContent contents
-        )
-    {
-        ConfigObject c = getConnectionConfig(contect, connection);
-        
-        return service.jobs().insert(c.project.toString(),
-            getLoadJob(context, connection, dataset, destTable, schema, options),
-            contents)
-    }
-    
-    /// Honors options.content_type.
-    Bigquery.Jobs.Insert getJobLoadInsertRequest(GlueContext context, String connection, String dataset, String destTable,
-        String schema, Map options, File srcFile
-        )
-    {
-        FileContent contents = new FileContent(options.content_type ?: DEFAULT_CONTENT_TYPE, srcFile);
-        return getJobLoadInsertRequest(context, connection, dataset, destTable, schema, options, contents);
-    }
-    
-    /// Honors options.content_type.
-    Bigquery.Jobs.Insert getJobLoadInsertRequest(GlueContext context, String connection, String dataset, String destTable,
-        String schema, Map options, byte[] data
-        )
-    {
-        ByteArrayContent contents = new ByteArrayContent(options.content_type ?: DEFAULT_CONTENT_TYPE, data);
-        return getJobLoadInsertRequest(context, connection, dataset, destTable, schema, options, contents);
-    }
-    
-    /// Insert data from local file, waits for job execution.
-    void insert(GlueContext context, String connection, String dataset, String destTable,
-        String schema, Map options, String srcFileName)
-    {
-        Job job = getJobLoadInsertRequest(context, connection, dataset, destTable, schema, options, new File(srcFileName)).execute();
-        if(job == null)
-        {
-            throw new NullPointerException("Job is null");
-        }
-        
-        while(true)
-        {
-            String status = job.getStatus().getState();
-
-            if (status != null || ("DONE").equalsIgnoreCase(status))
-            {
-                ErrorProto errorResult = job.getStatus().getErrorResult();
-                if(errorResult != null)
+                if(isCommon != commonSwitches.contains(k))
                 {
-                    throw new RuntimeException("Error running job: " + errorResult);
+                    return;
                 }
-                break;
+                
+                if(k.length() == 1)
+                {
+                    append << "-$k"
+                }
+                else
+                {
+                    append << "--$k"
+                }
+                if(v == true)
+                {
+                    // Switch is present to enable.
+                }
+                else
+                {
+                    append << v.toString()
+                }
             }
-
-            Thread.sleep(1000);
         }
     }
     
-    // ---
-    
-    protected TableSchema getTableSchema(String schema)
+    void appendConnectionCommonOptions(GlueContext context, String connection, List<String> append)
     {
-        List<TableFieldSchema> schemaList = new ArrayList<TableFieldSchema>();
-        
-        for(String field : schema.split("\\s*,\\s*"))
+        def commonOptions = getConnectionConfig(context, connection).commonOptions;
+        boolean wantHeadless = true;
+        boolean wantQuiet = true;
+        if(commonOptions)
         {
-            String[] x = field.split("\\s*:\\s*");
-            /*if(x.length == 1)
+            appendOptions(context, connection, commonOptions, append, true);
+            wantHeadless = !commonOptions.containsKey("headless");
+            wantQuiet = !commonOptions.containsKey("quiet") && !commonOptions.containsKey("q");
+        }
+        if(wantHeadless)
+        {
+            append << "--headless";
+        }
+        if(wantQuiet)
+        {
+            append << "--quiet";
+        }
+    }
+    
+    static class BqRuntimeException extends RuntimeException
+    {
+        public BqRuntimeException(String msg)
+        {
+            super(msg);
+        }
+    }
+    
+    String getProcessIO(GlueContext context, Process proc, Closure created, boolean throwOnStderr=true, boolean throwOnErrorCode=true)
+    {
+        def sbout = new StringBuffer();
+        def sberr = new StringBuffer();
+        //proc.waitForProcessOutput(sbout, sberr);
+        proc.consumeProcessOutput(sbout, sberr);
+        if(created)
+        {
+            created(proc);
+        }
+        proc.waitFor();
+        boolean showerrorcode = throwOnErrorCode && proc.exitValue() != 0;
+        if(throwOnStderr && sberr.length() > 0 && !showerrorcode)
+        {
+            throw new BqRuntimeException("Command `" + args + "` failed: " + sberr.toString());
+        }
+        if(showerrorcode)
+        {
+            String extra = "";
+            if(sberr.length() > 0)
             {
-                schemaList.add(new TableFieldSchema().setName(x[0]));
+                extra = ": " + sberr.toString();
             }
-            else*/ if(x.length == 2)
+            throw new BqRuntimeException("Command `" + args + "` returned error exit value " + proc.exitValue() + extra);
+        }
+        return sbout.toString();
+    }
+    
+    String getProcessOutput(GlueContext context, Process proc, boolean throwOnStderr=true, boolean throwOnErrorCode=true)
+    {
+        return getProcessIO(context, proc, null, throwOnStderr, throwOnErrorCode);
+    }
+    
+    Process startProcess(GlueContext context, String connection, List<String> args)
+    {
+        def c = getConnectionConfig(context, connection);
+        
+        def cmd = [];
+        cmd << binPath;
+        appendConnectionCommonOptions(context, connection, args);
+        for(String arg : args)
+        {
+            cmd << arg;
+        }
+        
+        String workingDir = ".";
+        if(true)
+        {
+            File logFile = context?.logger?.getLogFile()
+            if(logFile)
             {
-                schemaList.add(new TableFieldSchema().setName(x[0]).setType(x[1]));
-            }
-            else
-            {
-                throw new RuntimeException("Invalid schema: $schema");
+                File parent = logFile.getParentFile();
+                if(parent)
+                {
+                    workingDir = parent.getAbsolutePath();
+                }
             }
         }
         
-        TableSchema ts = new TableSchema();
-        ts.setFields(schemaList);
-        return ts;
+        Process proc = cmd.execute(null, new File(workingDir));
+        return proc;
     }
     
-    protected final String DEFAULT_CONTENT_TYPE = "application/octet-stream";
+    ///
+    String run(GlueContext context, String connection, List<String> args, boolean throwOnStderr=true, boolean throwOnErrorCode=true)
+    {
+        return getProcessOutput(context, startProcess(context, connection, args), throwOnStderr, throwOnErrorCode);
+    }
+    
+    ///
+    String cp(GlueContext context, String connection, String old_table, String new_table, Map<String, Object> options)
+    {
+        List<String> args = new ArrayList<String>();
+        appendOptions(context, connection, options, args, true);
+        args << "cp";
+        appendOptions(context, connection, options, args);
+        args << old_table;
+        args << new_table;
+        return run(context, connection, args,
+            options.throwOnStderr == false ? false : true,
+            options.throwOnErrorCode == false ? false : true);
+    }
+    
+    ///
+    String extract(GlueContext context, String connection, String source_table, List<String> destination_uris, Map<String, Object> options)
+    {
+        List<String> args = new ArrayList<String>();
+        appendOptions(context, connection, options, args, true);
+        args << "extract";
+        appendOptions(context, connection, options, args);
+        args << source_table;
+        args << destination_uris;
+        return run(context, connection, args,
+            options.throwOnStderr == false ? false : true,
+            options.throwOnErrorCode == false ? false : true);
+    }
+    
+    /// Shortcut for one destination URI.
+    String extract(GlueContext context, String connection, String source_table, String destination_uri, Map<String, Object> options)
+    {
+        return extract(context, connection, source_table, [ destination_uri ] as List<String>, options);
+    }
+    
+    /// Location is likely dataset.table
+    String head(GlueContext context, String connection, String location, Map<String, Object> options)
+    {
+        List<String> args = new ArrayList<String>();
+        appendOptions(context, connection, options, args, true);
+        args << "head";
+        appendOptions(context, connection, options, args);
+        args << location;
+        return run(context, connection, args,
+            options.throwOnStderr == false ? false : true,
+            options.throwOnErrorCode == false ? false : true);
+    }
+    
+    ///
+    String insert(GlueContext context, String connection, String table, String filePath, Map<String, Object> options)
+    {
+        List<String> args = new ArrayList<String>();
+        appendOptions(context, connection, options, args, true);
+        args << "insert";
+        appendOptions(context, connection, options, args);
+        args << table;
+        File f = new File(filePath);
+        if(!f.isFile())
+        {
+            throw new IllegalArgumentException("Not a file: $filePath");
+        }
+        return getProcessIO(context, startProcess(context, connection, args),
+            { proc ->
+                f.eachLine { line ->
+                    proc << line;
+                }
+            },
+            options.throwOnStderr == false ? false : true,
+            options.throwOnErrorCode == false ? false : true);
+    }
+    
+    ///
+    String load(GlueContext context, String connection, String destination, String source, String schema, Map<String, Object> options)
+    {
+        List<String> args = new ArrayList<String>();
+        appendOptions(context, connection, options, args, true);
+        args << "load";
+        appendOptions(context, connection, options, args);
+        args << destination;
+        args << source;
+        if(schema)
+        {
+            args << schema;
+        }
+        return run(context, connection, args,
+            options.throwOnStderr == false ? false : true,
+            options.throwOnErrorCode == false ? false : true);
+    }
+    
+    /// No schema needed.
+    String load(GlueContext context, String connection, String destination, String source, Map<String, Object> options)
+    {
+        return load(context, connection, destination, source, null, options);
+    }
+    
+    ///
+    String ls(GlueContext context, String connection, String location, Map<String, Object> options)
+    {
+        List<String> args = new ArrayList<String>();
+        appendOptions(context, connection, options, args, true);
+        args << "load";
+        appendOptions(context, connection, options, args);
+        if(location)
+        {
+            args << location;
+        }
+        return run(context, connection, args,
+            options.throwOnStderr == false ? false : true,
+            options.throwOnErrorCode == false ? false : true);
+    }
+    
+    // Shortcut for no list location.
+    String ls(GlueContext context, String connection, Map<String, Object> options)
+    {
+        return ls(context, connection, null, options);
+    }
+    
+    ///
+    String mk(GlueContext context, String connection, String location, Map<String, Object> options)
+    {
+        List<String> args = new ArrayList<String>();
+        appendOptions(context, connection, options, args, true);
+        args << "mk";
+        appendOptions(context, connection, options, args);
+        args << location;
+        return run(context, connection, args,
+            options.throwOnStderr == false ? false : true,
+            options.throwOnErrorCode == false ? false : true);
+    }
+    
+    /// Shortcut to create a table.
+    String mkTable(GlueContext context, String connection, String table, String schema, Map<String, Object> options)
+    {
+        if(true)
+        {
+            options = options.clone();
+            options.table = true;
+        }
+        List<String> args = new ArrayList<String>();
+        appendOptions(context, connection, options, args, true);
+        args << "mk";
+        appendOptions(context, connection, options, args);
+        args << table;
+        if(schema)
+        {
+            args << schema;
+        }
+        return run(context, connection, args,
+            options.throwOnStderr == false ? false : true,
+            options.throwOnErrorCode == false ? false : true);
+    }
+    
+    /// Shortcut to create a table.
+    String mkTable(GlueContext context, String connection, String table, Map<String, Object> options)
+    {
+        return mkTable(context, connection, table, null, options);
+    }
+    
+    ///
+    String query(GlueContext context, String connection, String query, Map<String, Object> options)
+    {
+        List<String> args = new ArrayList<String>();
+        appendOptions(context, connection, options, args, true);
+        args << "query";
+        appendOptions(context, connection, options, args);
+        args << query;
+        return run(context, connection, args,
+            options.throwOnStderr == false ? false : true,
+            options.throwOnErrorCode == false ? false : true);
+    }
+    
+    ///
+    String rm(GlueContext context, String connection, String location, boolean rf, Map<String, Object> options)
+    {
+        if(rf)
+        {
+            options = options.clone();
+            options.r = true;
+            options.f = true;
+        }
+        List<String> args = new ArrayList<String>();
+        appendOptions(context, connection, options, args, true);
+        args << "rm";
+        appendOptions(context, connection, options, args);
+        if(location)
+        {
+            args << location;
+        }
+        return run(context, connection, args,
+            options.throwOnStderr == false ? false : true,
+            options.throwOnErrorCode == false ? false : true);
+    }
+    
+    ///
+    String rm(GlueContext context, String connection, String location, Map<String, Object> options)
+    {
+        return rm(context, connection, location, false, options);
+    }
+    
+    ///
+    String show(GlueContext context, String connection, String location, Map<String, Object> options)
+    {
+        List<String> args = new ArrayList<String>();
+        appendOptions(context, connection, options, args, true);
+        args << "show";
+        appendOptions(context, connection, options, args);
+        if(location)
+        {
+            args << location;
+        }
+        return run(context, connection, args,
+            options.throwOnStderr == false ? false : true,
+            options.throwOnErrorCode == false ? false : true);
+    }
+    
+    /// Shortcut for no show location.
+    String show(GlueContext context, String connection, Map<String, Object> options)
+    {
+        return show(context, connection, null, options);
+    }
+    
+    ///
+    String update(GlueContext context, String connection, String location, Map<String, Object> options)
+    {
+        List<String> args = new ArrayList<String>();
+        appendOptions(context, connection, options, args, true);
+        args << "update";
+        appendOptions(context, connection, options, args);
+        args << location;
+        return run(context, connection, args,
+            options.throwOnStderr == false ? false : true,
+            options.throwOnErrorCode == false ? false : true);
+    }
+    
+    /// Shortcut to update table.
+    String updateTable(GlueContext context, String connection, String table, String schema, Map<String, Object> options)
+    {
+        if(true)
+        {
+            options = options.clone();
+            options.table = true;
+        }
+        List<String> args = new ArrayList<String>();
+        appendOptions(context, connection, options, args, true);
+        args << "update";
+        appendOptions(context, connection, options, args);
+        args << table;
+        if(schema)
+        {
+            args << schema;
+        }
+        return run(context, connection, args,
+            options.throwOnStderr == false ? false : true,
+            options.throwOnErrorCode == false ? false : true);
+    }
+    
+    /// Shortcut to update table.
+    String updateTable(GlueContext context, String connection, String table, Map<String, Object> options)
+    {
+        return updateTable(context, connection, table, null, options);
+    }
+    
+    ///
+    String wait(GlueContext context, String connection, String job_id, int seconds, Map<String, Object> options)
+    {
+        List<String> args = new ArrayList<String>();
+        appendOptions(context, connection, options, args, true);
+        args << "wait";
+        appendOptions(context, connection, options, args);
+        if(job_id)
+        {
+            args << job_id;
+        }
+        if(seconds >= 0)
+        {
+            args << "$seconds";
+        }
+        return run(context, connection, args,
+            options.throwOnStderr == false ? false : true,
+            options.throwOnErrorCode == false ? false : true);
+    }
+    
+    ///
+    String wait(GlueContext context, String connection, String job_id, Map<String, Object> options)
+    {
+        return wait(context, connection, job_id, -1, options);
+    }
+    
+    
+    Set<String> commonSwitches = [
+        "apilog",
+        "api",
+        "api_version",
+        "debug_mode",
+        "trace",
+        "bigqueryrc",
+        "credential_file",
+        "discovery_file",
+        "synchronous_mode",
+        "project_id",
+        "dataset_id",
+        "job_id",
+        "fingerprint_job_id",
+        "quiet",
+        "headless",
+        "format",
+        "job_property",
+        "use_gce_service_account",
+        "service_account",
+        "service_account_private_key_file",
+        "service_account_private_key_password",
+        "service_account_credential_file",
+        "max_rows_per_request",
+        ] as HashSet<String>;
     
 
 }
