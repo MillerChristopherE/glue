@@ -1,0 +1,53 @@
+<?xml version="1.0"?>
+<project
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+	xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<artifactId>glue-parent</artifactId>
+		<groupId>org.glue</groupId>
+		<version>0.2.0</version>
+	</parent>
+	<groupId>org.glue</groupId>
+	<artifactId>glue-modules-gcloud</artifactId>
+	<version>0.5.1</version>
+	<name>glue-modules-gcloud</name>
+	<url>http://maven.apache.org</url>
+	<properties>
+		<dep.version>0.5.0</dep.version>
+        <bigquery.version>v2-rev159-1.19.0</bigquery.version>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+	</properties>
+	<dependencies>
+		<dependency>
+			<groupId>commons-io</groupId>
+			<artifactId>commons-io</artifactId>
+			<version>2.0</version>
+		</dependency>
+		<dependency>
+			<groupId>commons-pool</groupId>
+			<artifactId>commons-pool</artifactId>
+			<version>1.5.5</version>
+		</dependency>
+		<dependency>
+			<groupId>org.glue</groupId>
+			<artifactId>glue-unit</artifactId>
+			<version>${dep.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.glue</groupId>
+			<artifactId>glue-modules</artifactId>
+			<version>${dep.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.google.guava</groupId>
+			<artifactId>guava</artifactId>
+			<version>13.0</version>
+		</dependency>
+        <dependency>
+          <groupId>com.google.apis</groupId>
+          <artifactId>google-api-services-bigquery</artifactId>
+          <version>${bigquery.version}</version>
+        </dependency>
+	</dependencies>
+</project>
