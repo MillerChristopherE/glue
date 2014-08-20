@@ -15,7 +15,7 @@
 	<url>http://maven.apache.org</url>
 	<properties>
 		<dep.version>0.5.0</dep.version>
-        <bigquery.version>v2-rev159-1.19.0</bigquery.version>
+        <!--<bigquery.version>v2-rev159-1.19.0</bigquery.version>-->
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
 	<dependencies>
@@ -44,10 +44,12 @@
 			<artifactId>guava</artifactId>
 			<version>13.0</version>
 		</dependency>
+        <!--
         <dependency>
           <groupId>com.google.apis</groupId>
           <artifactId>google-api-services-bigquery</artifactId>
           <version>${bigquery.version}</version>
         </dependency>
+        -->
 	</dependencies>
 </project>

@@ -258,7 +258,11 @@
 			<artifactId>glue-modules-hadoop</artifactId>
 			<version>${project.version}</version>
 		</dependency>
-
+                <dependency>
+                        <groupId>org.glue</groupId>
+                        <artifactId>glue-modules-gcloud</artifactId>
+                        <version>${project.version}</version>
+                </dependency>
 		<dependency>
 			<groupId>org.glue</groupId>
 			<artifactId>glue-trigger</artifactId>

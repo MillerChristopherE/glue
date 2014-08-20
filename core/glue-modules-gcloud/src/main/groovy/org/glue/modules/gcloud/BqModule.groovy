@@ -9,19 +9,6 @@ import org.glue.unit.process.DefaultJavaProcessProvider
 import org.glue.unit.process.JavaProcess
 import org.glue.unit.exceptions.*;
 
-import com.google.api.client.googleapis.auth.oauth2.*;
-import com.google.api.services.bigquery.*;
-import com.google.api.services.bigquery.model.*;
-import com.google.api.client.http.*;
-import com.google.api.client.http.javanet.*;
-import com.google.api.client.json.*;
-import com.google.api.client.json.jackson.*;
-import com.google.api.client.auth.oauth2.*;
-import com.google.api.client.extensions.appengine.http.*;
-import com.google.api.client.extensions.appengine.auth.oauth2.*;
-import com.google.api.client.json.jackson2.JacksonFactory;
-import com.google.api.client.*;
-
 
 /**
  * Interface with bq.
@@ -239,6 +226,8 @@ public class BqModule implements GlueModule {
                 }
             }
         }
+        
+        println "BqModule.startProcess: connection=$connection, command=$cmd";
         
         Process proc = cmd.execute(null, new File(workingDir));
         return proc;
