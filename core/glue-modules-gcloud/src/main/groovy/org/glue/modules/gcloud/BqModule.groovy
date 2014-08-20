@@ -11,17 +11,26 @@ import org.glue.unit.exceptions.*;
 
 
 /**
- * Interface with bq.
+ * Interface with BigQuery.<br/><br/>
+ * The documented methdos with GlueContext are for use with workflows.<br/>
+ * These methods wrap and mimic the commands provided by the bq python script:
+ * <a href="https://developers.google.com/bigquery/bq-command-line-tool#browsing" target="bq-command-line-tool">https://developers.google.com/bigquery/bq-command-line-tool</a>
+ * <br/><br/>
+ * The options map is used to specify switches to the command,
+ *    such as [:] for no options,
+ *    or [ j: true ] to enable the j switch,
+ *    or [ force: true, description: "my new data" ] for enabling the force switch and setting the description.
  */
 public class BqModule implements GlueModule {
 	
 	private static final Logger LOG = Logger.getLogger(BqModule)
 	
-	GlueContext ctx
+	protected GlueContext ctx
 	
-    String binPath = "bq";
-	Map<String, ConfigObject> connections=[:];
+    protected String binPath = "bq";
+	protected Map<String, ConfigObject> connections=[:];
     
+    @Override
 	void destroy(){
 	}
 
@@ -92,7 +101,7 @@ public class BqModule implements GlueModule {
 
     // Module user functions:
     
-    /// Get glue config for the connection.
+    // Get glue config for the connection.
     Map getConnectionConfig(GlueContext context, String connection)
     {
         if(!connections[connection])
@@ -239,7 +248,7 @@ public class BqModule implements GlueModule {
         return getProcessOutput(context, startProcess(context, connection, args), throwOnStderr, throwOnErrorCode);
     }
     
-    ///
+    /** Copy a table. */
     String cp(GlueContext context, String connection, String old_table, String new_table, Map<String, Object> options)
     {
         List<String> args = new ArrayList<String>();
@@ -253,7 +262,7 @@ public class BqModule implements GlueModule {
             options.throwOnErrorCode == false ? false : true);
     }
     
-    ///
+    /** Extract from source table to gstorage URIs */
     String extract(GlueContext context, String connection, String source_table, List<String> destination_uris, Map<String, Object> options)
     {
         List<String> args = new ArrayList<String>();
@@ -267,13 +276,13 @@ public class BqModule implements GlueModule {
             options.throwOnErrorCode == false ? false : true);
     }
     
-    /// Shortcut for one destination URI.
+    /** Shortcut for one destination URI. */
     String extract(GlueContext context, String connection, String source_table, String destination_uri, Map<String, Object> options)
     {
         return extract(context, connection, source_table, [ destination_uri ] as List<String>, options);
     }
     
-    /// Location is likely dataset.table
+    /** Get first rows of a table. */
     String head(GlueContext context, String connection, String location, Map<String, Object> options)
     {
         List<String> args = new ArrayList<String>();
@@ -286,7 +295,7 @@ public class BqModule implements GlueModule {
             options.throwOnErrorCode == false ? false : true);
     }
     
-    ///
+    /** Insert lines from a file into a table. */
     String insert(GlueContext context, String connection, String table, String filePath, Map<String, Object> options)
     {
         List<String> args = new ArrayList<String>();
@@ -309,7 +318,7 @@ public class BqModule implements GlueModule {
             options.throwOnErrorCode == false ? false : true);
     }
     
-    ///
+    /** Load data into a table; source is either a gstorage URI or a local file. */
     String load(GlueContext context, String connection, String destination, String source, String schema, Map<String, Object> options)
     {
         List<String> args = new ArrayList<String>();
@@ -333,7 +342,7 @@ public class BqModule implements GlueModule {
         return load(context, connection, destination, source, null, options);
     }
     
-    ///
+    /** List the objects. */
     String ls(GlueContext context, String connection, String location, Map<String, Object> options)
     {
         List<String> args = new ArrayList<String>();
@@ -349,13 +358,13 @@ public class BqModule implements GlueModule {
             options.throwOnErrorCode == false ? false : true);
     }
     
-    // Shortcut for no list location.
+    /** Shortcut for no list location. */
     String ls(GlueContext context, String connection, Map<String, Object> options)
     {
         return ls(context, connection, null, options);
     }
     
-    ///
+    /** Create a dataset, table or view. */
     String mk(GlueContext context, String connection, String location, Map<String, Object> options)
     {
         List<String> args = new ArrayList<String>();
@@ -368,7 +377,7 @@ public class BqModule implements GlueModule {
             options.throwOnErrorCode == false ? false : true);
     }
     
-    /// Shortcut to create a table.
+    /** Shortcut to create a table. */
     String mkTable(GlueContext context, String connection, String table, String schema, Map<String, Object> options)
     {
         if(true)
@@ -390,13 +399,13 @@ public class BqModule implements GlueModule {
             options.throwOnErrorCode == false ? false : true);
     }
     
-    /// Shortcut to create a table.
+    /** Shortcut to create a table. */
     String mkTable(GlueContext context, String connection, String table, Map<String, Object> options)
     {
         return mkTable(context, connection, table, null, options);
     }
     
-    ///
+    /** Run a query. */
     String query(GlueContext context, String connection, String query, Map<String, Object> options)
     {
         List<String> args = new ArrayList<String>();
@@ -409,7 +418,7 @@ public class BqModule implements GlueModule {
             options.throwOnErrorCode == false ? false : true);
     }
     
-    ///
+    /** Delete a dataset or table. rf can be true for recursive force delete. */
     String rm(GlueContext context, String connection, String location, boolean rf, Map<String, Object> options)
     {
         if(rf)
@@ -431,13 +440,13 @@ public class BqModule implements GlueModule {
             options.throwOnErrorCode == false ? false : true);
     }
     
-    ///
+    /** Shortcut to delete without rf. */
     String rm(GlueContext context, String connection, String location, Map<String, Object> options)
     {
         return rm(context, connection, location, false, options);
     }
     
-    ///
+    /** Show object info. */
     String show(GlueContext context, String connection, String location, Map<String, Object> options)
     {
         List<String> args = new ArrayList<String>();
@@ -453,13 +462,13 @@ public class BqModule implements GlueModule {
             options.throwOnErrorCode == false ? false : true);
     }
     
-    /// Shortcut for no show location.
+    /** Shortcut for no show location. */
     String show(GlueContext context, String connection, Map<String, Object> options)
     {
         return show(context, connection, null, options);
     }
     
-    ///
+    /** Update dataset or table. */
     String update(GlueContext context, String connection, String location, Map<String, Object> options)
     {
         List<String> args = new ArrayList<String>();
@@ -472,7 +481,7 @@ public class BqModule implements GlueModule {
             options.throwOnErrorCode == false ? false : true);
     }
     
-    /// Shortcut to update table.
+    /** Shortcut to update a table. */
     String updateTable(GlueContext context, String connection, String table, String schema, Map<String, Object> options)
     {
         if(true)
@@ -494,13 +503,13 @@ public class BqModule implements GlueModule {
             options.throwOnErrorCode == false ? false : true);
     }
     
-    /// Shortcut to update table.
+    /** Shortcut to update a table. */
     String updateTable(GlueContext context, String connection, String table, Map<String, Object> options)
     {
         return updateTable(context, connection, table, null, options);
     }
     
-    ///
+    /** Wait for a running or async job. Timeout of 0 means check and return status, otherwise wait max seconds. */
     String wait(GlueContext context, String connection, String job_id, int seconds, Map<String, Object> options)
     {
         List<String> args = new ArrayList<String>();
@@ -520,7 +529,7 @@ public class BqModule implements GlueModule {
             options.throwOnErrorCode == false ? false : true);
     }
     
-    ///
+    /** Shortcut to wait indefinitely. */
     String wait(GlueContext context, String connection, String job_id, Map<String, Object> options)
     {
         return wait(context, connection, job_id, -1, options);
