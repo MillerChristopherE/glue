@@ -216,7 +216,7 @@ public class BqModule implements GlueModule {
         
         def cmd = [];
         cmd << binPath;
-        appendConnectionCommonOptions(context, connection, args);
+        appendConnectionCommonOptions(context, connection, cmd);
         for(String arg : args)
         {
             cmd << arg;
@@ -295,7 +295,12 @@ public class BqModule implements GlueModule {
             options.throwOnErrorCode == false ? false : true);
     }
     
-    /** Insert lines from a file into a table. */
+    /**
+     * Insert lines from a file into a table <br/>
+     * Deprecated:  load does the same thing more efficiently.
+     * @deprecated  load does the same thing more efficiently.
+     */
+    @Deprecated
     String insert(GlueContext context, String connection, String table, String filePath, Map<String, Object> options)
     {
         List<String> args = new ArrayList<String>();
@@ -509,7 +514,7 @@ public class BqModule implements GlueModule {
         return updateTable(context, connection, table, null, options);
     }
     
-    /** Wait for a running or async job. Timeout of 0 means check and return status, otherwise wait max seconds. */
+    /** Wait for a running or async job; timeout of 0 means check and return status, otherwise wait max seconds. */
     String wait(GlueContext context, String connection, String job_id, int seconds, Map<String, Object> options)
     {
         List<String> args = new ArrayList<String>();
