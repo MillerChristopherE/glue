@@ -177,7 +177,7 @@ public class BqModule implements GlueModule {
         }
     }
     
-    String getProcessIO(GlueContext context, Process proc, Closure created, boolean throwOnStderr=true, boolean throwOnErrorCode=true)
+    String getProcessIO(GlueContext context, Process proc, Closure created, boolean throwOnStderr=false, boolean throwOnErrorCode=true)
     {
         def sbout = new StringBuffer();
         def sberr = new StringBuffer();
@@ -205,7 +205,7 @@ public class BqModule implements GlueModule {
         return sbout.toString();
     }
     
-    String getProcessOutput(GlueContext context, Process proc, boolean throwOnStderr=true, boolean throwOnErrorCode=true)
+    String getProcessOutput(GlueContext context, Process proc, boolean throwOnStderr=false, boolean throwOnErrorCode=true)
     {
         return getProcessIO(context, proc, null, throwOnStderr, throwOnErrorCode);
     }
@@ -243,7 +243,7 @@ public class BqModule implements GlueModule {
     }
     
     ///
-    String run(GlueContext context, String connection, List<String> args, boolean throwOnStderr=true, boolean throwOnErrorCode=true)
+    String run(GlueContext context, String connection, List<String> args, boolean throwOnStderr=false, boolean throwOnErrorCode=true)
     {
         return getProcessOutput(context, startProcess(context, connection, args), throwOnStderr, throwOnErrorCode);
     }
