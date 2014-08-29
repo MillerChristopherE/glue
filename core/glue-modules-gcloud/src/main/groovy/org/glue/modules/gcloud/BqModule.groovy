@@ -153,11 +153,13 @@ public class BqModule implements GlueModule {
         def commonOptions = getConnectionConfig(context, connection).commonOptions;
         boolean wantHeadless = true;
         boolean wantQuiet = true;
+        boolean wantFormat = true;
         if(commonOptions)
         {
             appendOptions(context, connection, commonOptions, append, true);
             wantHeadless = !commonOptions.containsKey("headless");
             wantQuiet = !commonOptions.containsKey("quiet") && !commonOptions.containsKey("q");
+            wantFormat = !commonOptions.containsKey("format");
         }
         if(wantHeadless)
         {
@@ -166,6 +168,10 @@ public class BqModule implements GlueModule {
         if(wantQuiet)
         {
             append << "--quiet";
+        }
+        if(wantFormat)
+        {
+            append << "--format=csv";
         }
     }
     
