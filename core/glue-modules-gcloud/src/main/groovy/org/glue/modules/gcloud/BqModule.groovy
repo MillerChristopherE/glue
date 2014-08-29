@@ -197,7 +197,7 @@ public class BqModule implements GlueModule {
         boolean showerrorcode = throwOnErrorCode && proc.exitValue() != 0;
         if(throwOnStderr && sberr.length() > 0 && !showerrorcode)
         {
-            throw new BqRuntimeException("Command `" + args + "` failed: " + sberr.toString());
+            throw new BqRuntimeException("BQ command failed: " + sberr.toString());
         }
         if(showerrorcode)
         {
@@ -206,7 +206,7 @@ public class BqModule implements GlueModule {
             {
                 extra = ": " + sberr.toString();
             }
-            throw new BqRuntimeException("Command `" + args + "` returned error exit value " + proc.exitValue() + extra);
+            throw new BqRuntimeException("BQ command returned error exit value " + proc.exitValue() + extra);
         }
         return sbout.toString();
     }
@@ -358,7 +358,7 @@ public class BqModule implements GlueModule {
     {
         List<String> args = new ArrayList<String>();
         appendOptions(context, connection, options, args, true);
-        args << "load";
+        args << "ls";
         appendOptions(context, connection, options, args);
         if(location)
         {
