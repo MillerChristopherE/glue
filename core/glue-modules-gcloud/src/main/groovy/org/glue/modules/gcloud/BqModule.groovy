@@ -115,6 +115,10 @@ public class BqModule implements GlueModule {
     {
         options.each { k1, v ->
             String k = k1.toString();
+            if(k == "throwOnStderr" || k == "throwOnErrorCode")
+            {
+                return;
+            }
             assert k.length() > 0, "Invalid empty key"
             if(v == false)
             {
@@ -264,7 +268,7 @@ public class BqModule implements GlueModule {
         args << old_table;
         args << new_table;
         return run(context, connection, args,
-            options.throwOnStderr == false ? false : true,
+            options.throwOnStderr == true ? true : false,
             options.throwOnErrorCode == false ? false : true);
     }
     
@@ -278,7 +282,7 @@ public class BqModule implements GlueModule {
         args << source_table;
         args << destination_uris;
         return run(context, connection, args,
-            options.throwOnStderr == false ? false : true,
+            options.throwOnStderr == true ? true : false,
             options.throwOnErrorCode == false ? false : true);
     }
     
@@ -297,7 +301,7 @@ public class BqModule implements GlueModule {
         appendOptions(context, connection, options, args);
         args << location;
         return run(context, connection, args,
-            options.throwOnStderr == false ? false : true,
+            options.throwOnStderr == true ? true : false,
             options.throwOnErrorCode == false ? false : true);
     }
     
@@ -325,7 +329,7 @@ public class BqModule implements GlueModule {
                     proc << line;
                 }
             },
-            options.throwOnStderr == false ? false : true,
+            options.throwOnStderr == true ? true : false,
             options.throwOnErrorCode == false ? false : true);
     }
     
@@ -343,7 +347,7 @@ public class BqModule implements GlueModule {
             args << schema;
         }
         return run(context, connection, args,
-            options.throwOnStderr == false ? false : true,
+            options.throwOnStderr == true ? true : false,
             options.throwOnErrorCode == false ? false : true);
     }
     
@@ -365,7 +369,7 @@ public class BqModule implements GlueModule {
             args << location;
         }
         return run(context, connection, args,
-            options.throwOnStderr == false ? false : true,
+            options.throwOnStderr == true ? true : false,
             options.throwOnErrorCode == false ? false : true);
     }
     
@@ -384,7 +388,7 @@ public class BqModule implements GlueModule {
         appendOptions(context, connection, options, args);
         args << location;
         return run(context, connection, args,
-            options.throwOnStderr == false ? false : true,
+            options.throwOnStderr == true ? true : false,
             options.throwOnErrorCode == false ? false : true);
     }
     
@@ -406,7 +410,7 @@ public class BqModule implements GlueModule {
             args << schema;
         }
         return run(context, connection, args,
-            options.throwOnStderr == false ? false : true,
+            options.throwOnStderr == true ? true : false,
             options.throwOnErrorCode == false ? false : true);
     }
     
@@ -425,7 +429,7 @@ public class BqModule implements GlueModule {
         appendOptions(context, connection, options, args);
         args << query;
         return run(context, connection, args,
-            options.throwOnStderr == false ? false : true,
+            options.throwOnStderr == true ? true : false,
             options.throwOnErrorCode == false ? false : true);
     }
     
@@ -447,7 +451,7 @@ public class BqModule implements GlueModule {
             args << location;
         }
         return run(context, connection, args,
-            options.throwOnStderr == false ? false : true,
+            options.throwOnStderr == true ? true : false,
             options.throwOnErrorCode == false ? false : true);
     }
     
@@ -469,7 +473,7 @@ public class BqModule implements GlueModule {
             args << location;
         }
         return run(context, connection, args,
-            options.throwOnStderr == false ? false : true,
+            options.throwOnStderr == true ? true : false,
             options.throwOnErrorCode == false ? false : true);
     }
     
@@ -488,7 +492,7 @@ public class BqModule implements GlueModule {
         appendOptions(context, connection, options, args);
         args << location;
         return run(context, connection, args,
-            options.throwOnStderr == false ? false : true,
+            options.throwOnStderr == true ? true : false,
             options.throwOnErrorCode == false ? false : true);
     }
     
@@ -510,7 +514,7 @@ public class BqModule implements GlueModule {
             args << schema;
         }
         return run(context, connection, args,
-            options.throwOnStderr == false ? false : true,
+            options.throwOnStderr == true ? true : false,
             options.throwOnErrorCode == false ? false : true);
     }
     
@@ -536,7 +540,7 @@ public class BqModule implements GlueModule {
             args << "$seconds";
         }
         return run(context, connection, args,
-            options.throwOnStderr == false ? false : true,
+            options.throwOnStderr == true ? true : false,
             options.throwOnErrorCode == false ? false : true);
     }
     
