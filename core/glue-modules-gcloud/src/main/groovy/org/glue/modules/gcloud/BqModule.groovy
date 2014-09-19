@@ -179,7 +179,7 @@ public class BqModule implements GlueModule {
         }
     }
     
-    static class BqRuntimeException extends RuntimeException
+    static class BqRuntimeException extends java.lang.IllegalArgumentException // Groovy/JVM compat.
     {
         public BqRuntimeException(String msg)
         {
@@ -209,6 +209,10 @@ public class BqModule implements GlueModule {
             if(sberr.length() > 0)
             {
                 extra = ": " + sberr.toString();
+            }
+            if(sbout.length() < 256)
+            {
+                println "BQ output: $sbout"
             }
             throw new BqRuntimeException("BQ command returned error exit value " + proc.exitValue() + extra);
         }
