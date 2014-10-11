@@ -133,14 +133,31 @@ class DBTriggerStore2 extends TriggerStore2{
 		Connection conn = DriverManager.getConnection(url, uid, pwd);
 		conn.setAutoCommit(false);
 		Statement st = conn.prepareStatement("INSERT INTO unitfiles (unitid, fileid, status) SELECT id, ?, 'processed' from unittriggers where unit = '${unitName}' ON DUPLICATE KEY UPDATE status='processed'");
+        int nfiles = 0;
 		try{
 
 			for(fileId in fileIds){
 				st.setInt(1, fileId);
 				st.addBatch();
+                nfiles++;
 			}
 			
 			st.executeBatch();
+            
+            try
+            {
+                // Track how much was processed when: create table filesprocessed(unit varchar(100), ts datetime NOT NULL, count int);
+                Statement st2 = conn.prepareStatement("INSERT INTO filesprocessed VALUES('${unitName}', NOW(), ?)")
+                st2.setInt(1, nfiles);
+                st2.addBatch();
+                st2.executeBatch()
+                st2.close()
+            }catch(Exception e34){
+                st2.close()
+                println "Warning: was not able to add file counts to table filesprocessed." +
+                    " Note: this is not needed for normal operation. Reason: ${e34.getMessage()}";
+            }
+            
 			conn.commit();
 		}catch(BatchUpdateException exc){
 			conn.rollback();
