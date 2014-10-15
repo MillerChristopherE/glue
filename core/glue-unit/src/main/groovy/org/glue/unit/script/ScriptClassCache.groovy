@@ -45,10 +45,10 @@ class ScriptClassCache {
 	 * @return ConfigObject
 	 */
 	ConfigObject parse(String text){
-		println "Test : $text " 
-		println "loadScriptText: ${loadScriptText(text)}"
+		LOG.debug("Test : $text ")
+		LOG.debug("loadScriptText: ${loadScriptText(text)}")
 		def c = loadScriptText(text).newInstance()
-		println "Class c ${c.class} c= ${c}"
+		LOG.debug("Class c ${c.class} c= ${c}")
 	    new ConfigSlurper().parse(loadScriptText(text).newInstance())
 		
 	}
@@ -130,7 +130,7 @@ class ScriptClassCache {
 			}
 			
 			def scriptClass = loader.parseClass(scriptSource)
-		    println "ScriptClass: ${scriptClass}  ${scriptClass.class}"
+		    LOG.debug("ScriptClass: ${scriptClass}  ${scriptClass.class}")
 			item.loader = loader
 			item.checksum = checksum
 			item.script = scriptClass
