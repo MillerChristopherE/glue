@@ -45,6 +45,10 @@ class SettingsModule implements GlueModule {
 
     public Map getSettings(String name)
     {
+        if(name == "current")
+        {
+            name = ctx.unit.name;
+        }
         Map m = _sets[name];
         if(!m)
         {
