@@ -206,22 +206,24 @@ public class PigModule implements GlueModule {
 		ctx = context
 	}
 
-	public boolean run(GlueContext context = null, String pigFileOrScript, boolean localMode = false){
-		run(context, null, pigFileOrScript, [:], localMode)
-	}
+    public boolean run(GlueContext context = null, String pigFileOrScript, boolean localMode = false){
+        run(context, null, pigFileOrScript, [:], localMode ? "local" : null)
+    }
 
-	
-	public boolean run(GlueContext context = null, String pigFileOrScript, Map<String, String> params, boolean localMode = false){
-		run(context, null, pigFileOrScript, params, localMode)
-	}
+    public boolean run(GlueContext context = null, String pigFileOrScript, Map<String, String> params, boolean localMode = false){
+        run(context, null, pigFileOrScript, params, localMode ? "local" : null)
+    }
 
-	public boolean run(GlueContext context = null, String jobName , String pigFileOrScript,boolean localMode = false){
-		run(context, null, jobName, pigFileOrScript, [:], localMode)
-	}
+    public boolean run(GlueContext context = null, String jobName , String pigFileOrScript, boolean localMode = false){
+        run(context, null, jobName, pigFileOrScript, [:], localMode ? "local" : null)
+    }
 	
-	public boolean run(GlueContext context = null, String jobName , String pigFileOrScript, Map<String, String> params, boolean localMode = false){
-		run(context, null, jobName, pigFileOrScript, params, localMode)
-	}
+    public boolean run(GlueContext context = null, String jobName , String pigFileOrScript, Map<String, String> params, String mode = null){
+        run(context, null, jobName, pigFileOrScript, params, mode)
+    }
+    public boolean run(GlueContext context = null, String jobName , String pigFileOrScript, Map<String, String> params, boolean localMode){
+        run(context, null, jobName, pigFileOrScript, params, localMode ? "local" : null)
+    }
 
 	/**
 	 * 
@@ -234,7 +236,7 @@ public class PigModule implements GlueModule {
 	 * @param params
 	 * @return boolean true if success
 	 */
-	public boolean run(GlueContext _context = null, String clusterName, String jobName , String pigFileOrScript, Map<String, String> params, boolean localMode = false){
+	public boolean run(GlueContext _context = null, String clusterName, String jobName , String pigFileOrScript, Map<String, String> params, String mode = null){
 		
 		GlueContext context
 		if(_context == null)
@@ -275,11 +277,24 @@ public class PigModule implements GlueModule {
 
 			Collection args = []
 
-			//set local mode if requested
-			if(localMode){
-				args << '-x'
-				args << 'local'
-			}
+			for(String m : mode.split(',')) {
+			    if(m == "local"){
+				    args << '-x'
+				    args << 'local'
+			    }else if(m == "mapreduce"){
+                    args << '-x'
+                    args << 'mapreduce'
+                }else if(m == "dryrun"){
+                    args << '-dryrun'
+                }else if(m == "check"){
+                    args << '-check'
+                }else if(m == "embedded_groovy"){
+                    args << '-embedded'
+                    args << 'groovy'
+                }else{
+                    throw new Exception("Uknown pig mode: $m")
+                }
+            }
 
 			//set properties file
 			args << '-propertyFile'
@@ -325,6 +340,9 @@ public class PigModule implements GlueModule {
 		
 		return true;
 	}
+    public boolean run(GlueContext _context = null, String clusterName, String jobName , String pigFileOrScript, Map<String, String> params, boolean localMode){
+        return run(_context, clusterName, jobName, pigFileOrScript, params, localMode ? "local" : null);
+    }
 
 	private String loadConfigFile(String clusterName){
 		if(clusterName){
