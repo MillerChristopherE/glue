@@ -277,22 +277,24 @@ public class PigModule implements GlueModule {
 
 			Collection args = []
 
-			for(String m : mode.split(',')) {
-			    if(m == "local"){
-				    args << '-x'
-				    args << 'local'
-			    }else if(m == "mapreduce"){
-                    args << '-x'
-                    args << 'mapreduce'
-                }else if(m == "dryrun"){
-                    args << '-dryrun'
-                }else if(m == "check"){
-                    args << '-check'
-                }else if(m == "embedded_groovy"){
-                    args << '-embedded'
-                    args << 'groovy'
-                }else{
-                    throw new Exception("Uknown pig mode: $m")
+            if(mode != null) {
+			    for(String m : mode.split(',')) {
+			        if(m == "local"){
+				        args << '-x'
+				        args << 'local'
+			        }else if(m == "mapreduce"){
+                        args << '-x'
+                        args << 'mapreduce'
+                    }else if(m == "dryrun"){
+                        args << '-dryrun'
+                    }else if(m == "check"){
+                        args << '-check'
+                    }else if(m == "embedded=groovy"){
+                        args << '-embedded'
+                        args << 'groovy'
+                    }else{
+                        throw new Exception("Uknown pig mode: $m")
+                    }
                 }
             }
 
