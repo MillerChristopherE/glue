@@ -31,4 +31,12 @@ datasource_list
     clean = { set ->
         set.data = []
     }
+    
+    dryrunAllowWrite = { from, to ->
+        return true
+    }
+    
+    dryrunAllowRead = { from ->
+        return true
+    }
 }

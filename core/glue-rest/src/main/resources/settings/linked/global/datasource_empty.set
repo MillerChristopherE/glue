@@ -8,9 +8,18 @@ datasource_empty
     
     clean = { set ->
     }
+    
+    dryrunAllowWrite = { from, to ->
+        return true
+    }
+    
+    dryrunAllowRead = { from ->
+        return true
+    }
 }
 
 
+// Predefined data source named empty for convenience.
 empty = {
     type = "empty"
 }

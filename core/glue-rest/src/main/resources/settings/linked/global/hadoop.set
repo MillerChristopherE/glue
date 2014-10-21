@@ -1,0 +1,6 @@
+
+hadoop
+{
+    queue = "default"
+    priority = "NORMAL"
+}

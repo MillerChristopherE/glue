@@ -1,4 +1,4 @@
-datasource_fs
+datasource_file
 {
     eachLine = { set, callback ->
         def f = new File(set.path);
@@ -43,3 +43,7 @@ datasource_fs
         }
     }
 }
+
+// Note: prefer to use file rather than fs.
+// fs may change in the future to connect to different file systems.
+datasource_fs = datasource_file

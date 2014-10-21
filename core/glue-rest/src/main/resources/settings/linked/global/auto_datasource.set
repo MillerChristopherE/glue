@@ -15,22 +15,40 @@ datasourceByType = { type ->
 }
 
 
-datasourceInfoObject = { name, wantDS = true ->
-    if(!(name =~ /^\w+$/))
+datasourceInfoObject = { nameOrObj, wantDS = true ->
+    def dio
+    if(nameOrObj instanceof Map)
     {
-        throw new RuntimeException("Invalid data info object name '" + name + "'");
+        dio = nameOrObj;
     }
-    def dio = evaluate("return current." + name);
-    if(!dio || !(dio instanceof Map) || !dio.type)
+    else
     {
-        throw new RuntimeException("Data info object not found '" + name + "'");
+        def name = nameOrObj;
+        if(!(name =~ /^\w+$/))
+        {
+            throw new RuntimeException("Invalid data info object name '" + name + "'");
+        }
+        dio = evaluate("return current." + name);
+        if(!dio || !(dio instanceof Map))
+        {
+            throw new RuntimeException("Data info object not found '" + name + "'");
+        }
+        dio.name = name
     }
-    dio.name = name
+    if(!dio.type)
+    {
+        throw new RuntimeException("Not a valid data info object '" + (dio.name ?: "?") + "' (missing type)");
+    }
+    if(!dio.name)
+    {
+        current._lasttypeid = (current._lasttypeid ?: 0) + 1
+        dio.name = "${dio.type}_${current._lasttypeid}"
+    }
     if(wantDS)
     {
         dio.ds = current.datasourceByType(dio.type);
     }
-    //if(capabilities.contains('trace')) println "TRACE: found data info object '$name'";
+    //if(capabilities.contains('trace')) println "TRACE: found data info object '${dio.name}'";
     return dio
 }
 
@@ -52,19 +70,29 @@ datasourceDemandWrite = { set ->
 
 autoClean = { to ->
     def toInfo = current.datasourceInfoObject(to);
+    to = toInfo.name
     if(!toInfo.ds.clean)
     {
         throw new RuntimeException("Data source '" + toInfo.type + "' does not support clean");
     }
     current.datasourceDemandWrite(toInfo);
     if(!capabilities.contains('quiet')) println "autoClean '${to}'";
-    toInfo.ds.clean(toInfo);
+    if(current.dryrun && (!toInfo.dryrunAllowWrite || !toInfo.dryrunAllowWrite(current.datasourceInfoObject('empty'), toInfo)))
+    {
+        println "dryrun: not cleaning $to"
+    }
+    else
+    {
+        toInfo.ds.clean(toInfo);
+    }
 }
 
 
 autoCopy = { from, to ->
     def fromInfo = current.datasourceInfoObject(from);
     def toInfo = current.datasourceInfoObject(to);
+    from = fromInfo.name
+    to = toInfo.name
     if(!toInfo.ds.transfer)
     {
         throw new RuntimeException("Data source '" + toInfo.type + "' does not support transfer");
@@ -76,9 +104,22 @@ autoCopy = { from, to ->
     current.datasourceDemandWrite(toInfo);
     // transfer always called on the destination data source.
     if(!capabilities.contains('quiet')) println "autoCopy from '${from}' to '${to}'";
-    toInfo.ds.transfer(fromInfo, toInfo);
-    // On successful transfer, grab schema if none yet.
-    // Don't do this first so that the transfer has first chance.
-    current.obtainTransferSchema(fromInfo, toInfo);
+    if(current.dryrun && !toInfo.dryrunAllow
+        && (!toInfo.dryrunAllowWrite || !toInfo.dryrunAllowWrite(fromInfo, toInfo)))
+    {
+        println "dryrun: not copying $from to $to (!$to.dryrunAllowWrite)"
+    }
+    else if(current.dryrun && !toInfo.dryrunAllow
+        && (!fromInfo.dryrunAllowRead || !fromInfo.dryrunAllowRead(fromInfo)))
+    {
+        println "dryrun: not copying $from to $to (!$from.dryrunAllowRead)"
+    }
+    else
+    {
+        toInfo.ds.transfer(fromInfo, toInfo);
+        // On successful transfer, grab schema if none yet.
+        // Don't do this first so that the transfer has first chance.
+        current.obtainTransferSchema(fromInfo, toInfo);
+    }
 }
 

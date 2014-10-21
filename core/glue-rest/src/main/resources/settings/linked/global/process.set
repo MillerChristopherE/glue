@@ -33,3 +33,91 @@ finishProcess = { proc, throwOnStderr=true, throwOnErrorCode=true, showStderr=tr
     return sbout.toString();
 }
 
+
+// Use a process as a data source, based on standard input and output.
+// If cacheOutput=true, as a data source the process will run only once, unless clean is used.
+datasource_process
+{
+    eachLine = { set, callback ->
+        def results
+        set.stopped = false;
+        if(set._cached)
+        {
+            if(!capabilities.contains('quiet')) println "process '${set.name}' using cached output"
+            results = set._stdout;
+        }
+        else
+        {
+            if(set.onBeforeRun)
+            {
+                if(set.onBeforeRun() == false)
+                {
+                    if(!capabilities.contains('quiet')) println "process: onBeforeRun returned false, not running process"
+                    set.stopped = true;
+                    return
+                }
+            }
+            if(!set.run)
+            {
+                throw new RuntimeException("autoRun cannot run '${set.name}', need run property");
+            }
+            def output
+            if(current.dryrun && !set.dryrunAllow)
+            {
+                def dryrunOutput = "dryrun dummy data\nuse dryrunOutput='my data' to override this data\n";
+                if(set.dryrunOutput instanceof String)
+                {
+                    dryrunOutput = set.dryrunOutput
+                }
+                output = dryrunOutput
+            }
+            else
+            {
+                if(set.dryrunAllow && set.dryrunOutput)
+                {
+                    throw new RuntimeException("Cannot have dryrunAllow and dryrunOutput at the same time for '${set.name}'")
+                }
+                if(!capabilities.contains('quiet')) println "run: '${set.run}'";
+                output = current.run(set.run, set.throwOnStderr != false, set.throwOnErrorCode != false);
+            }
+            if(output.length() > 0 && output.charAt(output.length() - 1) == '\n')
+            {
+                // Remove one trailing newline so that we don't get an extra blank record that we don't want.
+                output = output.substring(0, output.length() - 1)
+            }
+            results = output.split("\n")
+            if(set.cacheOutput)
+            {
+                set._stdout = results
+                set._cached = true
+            }
+            if(set.printOutput)
+            {
+                println "Output:\n$output"
+            }
+        }
+        results.each(callback);
+    }
+    
+    transfer = { from, to ->
+        throw new IOException("It is not possible to copy to a process");
+    }
+    
+    clean = { set ->
+        set._cached = false;
+        set._stdout = null;
+    }
+    
+    dryrunAllowRead = { from ->
+        return true // Allow it here, eachLine will do extra checks.
+    }
+}
+
+
+autoRun = { set ->
+    def output = [ type: 'list' ]
+    current.autoCopy(set, output)
+    return output.data
+}
+
+

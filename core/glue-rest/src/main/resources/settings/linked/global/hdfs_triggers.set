@@ -1,24 +1,25 @@
 
-
 // Similar to Collection.findAll(Closure) called on the ready file paths.
 // Returns a map with: list containing a list of [path, id] and markAsProcessed which is a function.
-hdfsReadyFilesFindAll = { closure, maxFiles = 1000000, randomizeCount = 100 ->
+hdfsReadyFilesFindAll = { closure={f->true}, maxFiles = 10000, randomizeFilesCount = 100 ->
     def prelist = []
+    def added = new HashSet<Integer>();
     glueContext.hdfsTriggerStore2.listReadyFiles { fileid, file ->
-        if(prelist.size() < maxFiles)
+        if(!added.contains(fileid) && prelist.size() < maxFiles)
         {
+            added.add(fileid);
             prelist << [ path: file.toString(), id: fileid ];
         }
     }
-    if(prelist.size() > randomizeCount)
+    if(prelist.size() >= randomizeFilesCount)
     {
         prelist.sort { a, b ->
-            return a.compareTo(b)
+            return a.path.compareTo(b.path)
         }
-        def r = new java.util.Random()
-        int i = r.nextInt(randomizeCount);
-        def x = prelist[i]
-        prelist[i] = prelist[0]
+        def r = new java.util.Random();
+        int ri = r.nextInt(prelist.size());
+        def x = prelist[ri]
+        prelist[ri] = prelist[0]
         prelist[0] = x
     }
     def list = prelist.findAll { info ->
@@ -27,33 +28,210 @@ hdfsReadyFilesFindAll = { closure, maxFiles = 1000000, randomizeCount = 100 ->
     return [
         list: list,
         markAsProcessed: { ->
-            list.each { info ->
-                glueContext.hdfsTriggerStore2.markFilesAsProcessed(info.id);
+            if(current.dryrun)
+            {
+                println "dryrun: Not marking hdfs trigger files as processed"
             }
+            else
+            {
+                glueContext.hdfsTriggerStore2.markFilesAsProcessed(list.collect{ it.id });
+            }
+            list.clear();
+        }
+    ]
+}
+
+
+// Recursively lists the directory and returns the same interface as hdfsReadyFilesFindAll.
+// This allows easily switching between real triggers and just processing an entire dir.
+// The closure is optional, allows filtering the files.
+hdfsDirFilesFindAll = { dir, closure={p->true} ->
+    def list = [];
+    glueContext.hdfs.list dir.toString(), true, { path ->
+        if(closure(path))
+        {
+            list << [ path: path, id: -1 ];
+        }
+    }
+    return [
+        list: list,
+        markAsProcessed: { ->
+            list.clear();
+        }
+    ]
+}
+
+
+// Similar to hdfsDirFilesFindAll but just explicitly set one path.
+hdfsInputFile = { path=null ->
+    def list = [];
+    if(path)
+    {
+        list << [ path: path, id: -1 ];
+    }
+    return [
+        list: list,
+        markAsProcessed: { ->
+            list.clear();
         }
     ]
 }
 
 
 /* The settings can contain:
-    pathGroup = wildcard pattern to group paths, should only be a subset otherwise groups will contain only one file.
-    pathGroupReprocessAll = true to re-process the whole path group, not just those files which are ready.
+        pathGroup = wildcard pattern to group paths, should only be a subset otherwise groups will contain only one file.
+        pathGroupReprocessAll = true to re-process the whole path group, not just those files which are ready.
+        readyInputFile = function called on a potential input file; return false if it's not time yet to process the file.
+        validateInputFile = function called on a potential input file; return false if the file is NEVER VALID for processing.
+        maxFiles = the maximum number of files processed at one time.
+        randomizeFilesCount = randomize the file order when processing this many files at once.
+        dirFiles = a directory to list using hdfsDirFilesFindAll rather than using triggers.
+    Returns an object with method markAsProcessed to be called when done processing the files.
 */
-setHdfsReadyFiles = { to ->
+getHdfsInputFiles = { to ->
     def set = current.datasourceInfoObject(to);
     if(!set.type.startsWith("hdfs_"))
     {
-        throw new RuntimeException("setHdfsReadyFiles can only be used with HDFS data sources, not ${set.type} ($to)");
+        throw new RuntimeException("getHdfsInputFiles can only be used with HDFS data sources, not ${set.type} ($set.name)");
+    }
+    if(set.dryrunAllow && set.dryrunPath)
+    {
+        throw new RuntimeException("Cannot have both dryrunAllow and dryrunPath for ${set.name}");
     }
     def includeHidden = set.includeHidden = (set.includeHidden ?: false);
     def pathGroup = set.pathGroup ?: "";
-    def rf = current.hdfsReadyFilesFindAll({ path ->
-        // Find subset pathGroup... only use the same group for subsequent files.
-        // exclude hidden,.. if not includeHidden
-        // exclude directories!!! ***
-        // exclude non-existing (deleted)...
-        // pathGroupReprocessAll means the path property doesn't become all the ready files, but literally becomes the matching group.
-    }, maxFiles, randomizeCount);
-    return rf;
+    def readyInputFile = set.readyInputFile ?: { path -> return true };
+    def validateInputFile = set.validateInputFile ?: { path -> };
+    def pathGroupSubstring = null;
+    def pathGroupReprocessAll = set.pathGroupReprocessAll = (set.pathGroupReprocessAll ?: false);
+    def pathGroupPat = java.util.regex.Pattern.compile(
+        ".*?(" + pathGroup.inject(new StringBuilder(), { sb, ch ->
+                switch(ch)
+                {
+                    case '*': sb << ".*?"; break; case '?': sb << "."; break; 
+                    case '(': case ')': case '[': case ']': case '$': case '^': case '.':
+                    case '{': case '}': case '|': case '\\': sb << "\\$ch"; break;
+                    default: sb << ch;
+                }
+                return sb;
+            }) + ").*"
+        );
+    if(current.dryrun && !set.dryrunAllow)
+    {
+        println "dryrun: not getting real input files for '${set.name}'"
+        if(!set._dryrunDone)
+        {
+            set._dryrunDone = true // Don't get into an infinite trigger loop.
+            def path = (set.dryrunPath ?: "/tmp/dryrun/input/${set.name}").toString();
+            if(validateInputFile(path) == false || readyInputFile(path) != false)
+            {
+                set.path = path
+                return current.hdfsInputFile(path)
+            }
+        }
+        set.path = null;
+        return current.hdfsInputFile()
+    }
+    def newpath = new StringBuilder();
+    def filterFunc = { path ->
+        if(!includeHidden && path.indexOf("/_") != -1)
+        {
+            return true;
+        }
+        if(!glueContext.hdfs.exist(path))
+        {
+            return true;
+        }
+        if(!glueContext.hdfs.isFile(path))
+        {
+            return true;
+        }
+        
+        if(pathGroupSubstring == null)
+        {
+            if(pathGroup == "")
+            {
+                pathGroupSubstring = "";
+            }
+            else
+            {
+                def m = pathGroupPat.matcher(path);
+                if(m.find())
+                {
+                    pathGroupSubstring = m.group(1);
+                }
+                else
+                {
+                    println "Input file '$path' does not match the pathGroup '$pathGroup', will be marked as processed"
+                    return true;
+                }
+            }
+            if(validateInputFile(path) == false)
+            {
+                pathGroupSubstring = null;
+                return true;
+            }
+            if(readyInputFile(path) == false)
+            {
+                pathGroupSubstring = null;
+                return false;
+            }
+            if(pathGroupSubstring != "")
+            {
+                if(!capabilities.contains('quiet')) println "pathGroup resolved to $pathGroupSubstring";
+            }
+        }
+        else
+        {
+            if(path.indexOf(pathGroupSubstring) == -1)
+            {
+                return false;
+            }
+            if(validateInputFile(path) == false)
+            {
+                return true;
+            }
+            if(readyInputFile(path) == false)
+            {
+                return false;
+            }
+        }
+        
+        if(pathGroupReprocessAll)
+        {
+            if(!path.startsWith(path))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            if(newpath.length() > 0)
+            {
+                newpath.append(',');
+            }
+            newpath.append(path);
+        }
+        return true;
+    }
+    def rf
+    if(set.dirFiles)
+    {
+        if(!capabilities.contains('quiet')) println "Input files set to an entire directory";
+        rf = current.hdfsDirFilesFindAll(dirFiles, filterFunc);
+    }
+    else
+    {
+        rf = current.hdfsReadyFilesFindAll(filterFunc, set.maxFiles ?: 1000000, set.randomizeFilesCount ?: 100);
+    }
+    if(pathGroupReprocessAll)
+    {
+        set.path = pathGroupSubstring;
+    }
+    else
+    {
+        set.path = newpath.toString();
+    }
+    return rf
 }
 

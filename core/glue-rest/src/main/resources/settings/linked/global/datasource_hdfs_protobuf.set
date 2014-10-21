@@ -1,6 +1,8 @@
 
 datasource_hdfs_protobuf
 {
+    kindClasses = [:];
+    
     eachLine = { set, callback ->
         throw new IOException("Directly reading from hdfs_protobuf data sources not implemented (${set.name}), use pig");
     }
@@ -22,7 +24,15 @@ datasource_hdfs_protobuf
         {
             throw new RuntimeException("Expected kind (protobuf class) for hdfs_protobuf (${set.name}.kind)");
         }
-        return "using ProtobufLoadFields('${set.schema.replaceAll(/[\r\n\t]+/, " ")}', '${set.kind}')";
+        def logClass = current.datasource_hdfs_protobuf.kindClasses[set.kind] ?: set.kind;
+        def logClassPig = logClass.inject(new StringBuilder(), { sb, ch ->
+                if(ch == "\$") sb << "\\\$";
+                else if(ch == "\\") sb << "\\\\";
+                else if(ch == "-") sb << "_";
+                else sb << ch;
+                return sb;
+            }).toString()
+        return "using ProtobufLoadFields('${set.schema.replaceAll(/[\r\n\t]+/, " ")}', '$logClassPig')";
     }
     
     getPigStoreSuffix = { set ->

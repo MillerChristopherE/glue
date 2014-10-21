@@ -1,13 +1,29 @@
 
+// script can be either a file path or a pig script string.
+runPig = { name, script, params=[:] ->
+    if(current.dryrun)
+    {
+        println "dryrun: not running pig script $name"
+    }
+    else
+    {
+        glueContext.pig.run(name, script, params);
+    }
+}
+
+// Deprecated:
 runPigDirect = { script, name ->
-    glueContext.pig.run(name, script, [:]);
+    println "Using deprecated runPigDirect for pig script $name"
+    current.runPig(name, script)
 }
 
 autoPig = { piginfo, name = null ->
     def script
+    def pi // The info obj , not always valid!
+    def pig_params = null;
     if(piginfo =~ /^\w+$/)
     {
-        def pi = evaluate("return current." + piginfo);
+        pi = evaluate("return current." + piginfo);
         if(!pi || !(pi instanceof Map))
         {
             throw new RuntimeException("Pig info not found '" + piginfo + "'");
@@ -16,10 +32,21 @@ autoPig = { piginfo, name = null ->
         {
             throw new RuntimeException("Pig script for '$piginfo' not found ($piginfo.script)");
         }
+        pi.stopped = false;
         script = pi.script;
         if(!name)
         {
             name = piginfo;
+        }
+        pig_params = pi.params
+        if(pi.onBeforeRun)
+        {
+            if(pi.onBeforeRun() == false)
+            {
+                if(!capabilities.contains('quiet')) println "pig: onBeforeRun returned false, not running job"
+                pi.stopped = true;
+                return
+            }
         }
     }
     else
@@ -44,6 +71,12 @@ autoPig = { piginfo, name = null ->
                 {
                     def setname = params[0].replace("'", "").replace("\"", ""); // q&d
                     def set = current.datasourceInfoObject(setname);
+                    if(!set.path)
+                    {
+                        if(!capabilities.contains('quiet')) println "pig: no input for @load('$setname'), not running job"
+                        if(pi) pi.stopped = true;
+                        return
+                    }
                     def loadcmd = " load '${set.path}' ";
                     if(set.ds.getPigLoadSuffix)
                     {
@@ -104,7 +137,7 @@ autoPig = { piginfo, name = null ->
         }
     }
     m.appendTail(newscript);
-    //if(!capabilities.contains('quiet')) println "runPigDirect \"$newscript\""
-    current.runPigDirect(newscript.toString(), name.toString());
+    //if(!capabilities.contains('quiet')) println "runPig \"$newscript\""
+    current.runPig(name.toString(), newscript.toString(), pig_params ?: [:]);
 }
 

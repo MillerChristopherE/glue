@@ -1,0 +1,61 @@
+// Do not change or override.
+invokeTime = new Date()
+
+// Consider the current run to be this date/time.
+// This isn't the data's date unless usually running for the current day.
+// These should only be used to set the run date/time, use getCurrentRunTime to get it.
+setRunDate = null // Date.format("yyyy-MM-dd")
+setRunTime = null // Date
+
+getCurrentRunTime = { ->
+    if(!current.setRunTime)
+    {
+        if(current.setRunDate)
+        {
+            current.setRunTime = Date.parse("yyyy-MM-dd", current.setRunDate)
+        }
+        else
+        {
+            current.setRunTime = invokeTime
+            current.setRunDate = current.setRunTime.format("yyyy-MM-dd")
+        }
+    }
+    else if(!current.setRunDate)
+    {
+        current.setRunDate = invokeTime.format("yyyy-MM-dd")
+    }
+    return current.setRunTime;
+}
+
+runForDays = 1
+runForFirstDay = -1
+runForDaysDirection = -1
+
+oldestDateToProcess = "0000-00-00" // yyyy-MM-dd, allows hard coding the oldest date to process.
+lastDateToProcess = "9999-12-31" /// yyyy-MM-dd, allows setting the last (newest) date to process, when processing is no longer needed.
+
+// If usually running for date-1, this gets that date from getCurrentRunTime()'s POV.
+getProcessDateRange = { format="yyyy-MM-dd" ->
+    def range = []
+    def nextdate = Date.parse("yyyy-MM-dd", current.getCurrentRunTime().format("yyyy-MM-dd")) + current.runForFirstDay;
+    assert current.runForDays >= 0
+    for(int i = 0; i < current.runForDays; i++)
+    {
+        def nd = nextdate.format("yyyy-MM-dd");
+        if(nd < current.oldestDateToProcess)
+        {
+            if(!capabilities.contains('quiet')) println "getProcessDateRange: skipping data for $nd due to oldestDateToProcess=${current.oldestDateToProcess}"
+        }
+        else if(nd > current.lastDateToProcess)
+        {
+            if(!capabilities.contains('quiet')) println "getProcessDateRange: skipping data for $nd due to lastDateToProcess=${current.lastDateToProcess}"
+        }
+        else
+        {
+            range << nextdate.format(format)
+        }
+        nextdate = nextdate + current.runForDaysDirection
+    }
+    if(current.debug) println "getProcessDateRange = $range"
+    return range
+}
