@@ -28,7 +28,7 @@ datasource_hdfs_protobuf
         def logClassPig = logClass.inject(new StringBuilder(), { sb, ch ->
                 if(ch == "\$") sb << "\\\$";
                 else if(ch == "\\") sb << "\\\\";
-                else if(ch == "-") sb << "_";
+                else if(ch == '-') sb << '_';
                 else sb << ch;
                 return sb;
             }).toString()

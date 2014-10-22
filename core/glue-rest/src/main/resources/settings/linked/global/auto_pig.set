@@ -93,7 +93,7 @@ autoPig = { piginfo, name = null ->
                     {
                         throw new IOException("Pig cannot directly read from ${set.type}, please save it to hdfs first (${set.name})");
                     }
-                    m.appendReplacement(newscript, loadcmd.toString());
+                    m.appendReplacement(newscript, java.util.regex.Matcher.quoteReplacement(loadcmd.toString()))
                 }
                 break;
             
@@ -128,7 +128,7 @@ autoPig = { piginfo, name = null ->
                     {
                         throw new IOException("Pig cannot directly write to ${set.type}, please save it to hdfs first (${set.name})");
                     }
-                    m.appendReplacement(newscript, storecmd.toString());
+                    m.appendReplacement(newscript, java.util.regex.Matcher.quoteReplacement(storecmd.toString()));
                 }
                 break;
             
