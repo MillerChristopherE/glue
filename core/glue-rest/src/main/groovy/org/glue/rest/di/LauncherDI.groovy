@@ -85,9 +85,15 @@ class LauncherDI {
             squeues = configObject.queues
         }
         return new QueuedExecServiceMultiQueueImpl(
-            squeues.split("[,;]").collect{return new QueuedExecServiceMultiQueueImpl.QueueInfo(
-                name: it, maxRunningWorkflows: config.executorMaxProcesses
-            )},
+            squeues.split("[,;]").collect{
+                def name = it
+                def maxrun = config.executorMaxProcesses
+                if(it.indexOf(':') != -1){
+                    name = it.substring(0, it.indexOf(':'))
+                    maxrun = Integer.parseInt(it.substring(it.indexOf(':') + 1), 10)
+                }
+                return new QueuedExecServiceMultiQueueImpl.QueueInfo(name: name, maxRunningWorkflows: maxrun)
+            },
             configObject,
             config.processJavaOpts,
             config.processClassPath,
