@@ -10,6 +10,7 @@ import org.restlet.resource.Get
 import org.restlet.resource.ServerResource
 import org.glue.unit.exec.GlueExecutor
 import org.glue.unit.exec.UnitExecutor
+import org.glue.unit.om.GlueUnitMultiQueue
 
 import java.util.Map
 
@@ -42,10 +43,14 @@ class StatusRunningResource extends ServerResource {
 			
 			def qwfs = executor.queuedWorkflows()
 			
-			def runningStats = executor.runningWorkflows().collect { 
-				ctx -> [unitId:ctx.unitId, name:ctx.unit.name,
-					    queued: qwfs.contains(ctx.unit.name)
-					]  
+			def runningStats = executor.runningWorkflows().collect { ctx ->
+                def x = [unitId:ctx.unitId, name:ctx.unit.name,
+					queued: qwfs.contains(ctx.unit.name)
+				]
+                if(ctx.unit instanceof GlueUnitMultiQueue){
+                    x.queue = ((GlueUnitMultiQueue)ctx.unit).queue
+                }
+                return x
 		    } 
 			
 			setStatus(Status.SUCCESS_CREATED);

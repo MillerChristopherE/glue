@@ -5,6 +5,7 @@ import groovy.util.ConfigObject
 import org.glue.rest.config.LauncherConfig
 import org.glue.unit.exec.GlueExecutor
 import org.glue.unit.exec.impl.queue.QueuedExecServiceImpl
+import org.glue.unit.exec.impl.queue.QueuedExecServiceMultiQueueImpl
 import org.glue.unit.log.GlueExecLoggerProvider
 import org.glue.unit.log.impl.DefaultGlueExecLoggerProvider
 import org.glue.unit.om.GlueContextBuilder
@@ -65,6 +66,7 @@ class LauncherDI {
 
 		GlueUnitValidator unitValidator = beanFactory.getBean(GlueUnitValidator.class)
 
+        /*
 		return new QueuedExecServiceImpl(
 		config.executorMaxProcesses,
 		configObject,
@@ -77,6 +79,25 @@ class LauncherDI {
 		beanFactory.getBean(GlueExecLoggerProvider.class),
 		contextBuilder
 		)
+        */
+        String squeues = "default"
+        if(configObject.queues){
+            squeues = configObject.queues
+        }
+        return new QueuedExecServiceMultiQueueImpl(
+            squeues.split("[,;]").collect{return new QueuedExecServiceMultiQueueImpl.QueueInfo(
+                name: it, maxRunningWorkflows: config.executorMaxProcesses
+            )},
+            configObject,
+            config.processJavaOpts,
+            config.processClassPath,
+            repo,
+            new DefaultGlueUnitBuilder(),
+            config.processExecConfig,
+            config.processModuleConfig,
+            beanFactory.getBean(GlueExecLoggerProvider.class),
+            contextBuilder
+        )
 	}
 
 	@Bean

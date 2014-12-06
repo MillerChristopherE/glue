@@ -21,10 +21,14 @@ class QueuedWorkflow implements Serializable, Comparable<QueuedWorkflow>{
 	 * Workflow name
 	 */
 	String name
-	/**
-	 * unique execution id
-	 */
-	String uuid
+    /**
+     * unique execution id
+     */
+    String uuid
+    /**
+     * which queue is the workflow from
+     */
+    String queue = "default"
 
 	Map<String, Object> params
 	
@@ -40,17 +44,22 @@ class QueuedWorkflow implements Serializable, Comparable<QueuedWorkflow>{
 		this.uuid = uuid
 		this.params = params
 	}
-	
-	public QueuedWorkflow(String name, String uuid, Map<String, Object> params, int priority) {
-		super()
-		this.name = name
-		this.uuid = uuid
-		this.params = params
-		this.priority = priority
-	}
+    
+    public QueuedWorkflow(String name, String uuid, Map<String, Object> params, int priority) {
+        super()
+        this.name = name
+        this.uuid = uuid
+        this.params = params
+        this.priority = priority
+    }
+    
+    public QueuedWorkflow(String name, String uuid, Map<String, Object> params, String queue, int priority = 0) {
+        this(name, uuid, params, priority)
+        this.queue = queue
+    }
 
 	public int compareTo(QueuedWorkflow qwf){
-		"$name$uuid" <=> "${qwf.name}${qwf.uuid}"
+        "$name$uuid" <=> "${qwf.name}${qwf.uuid}"
 	}
 
 	@Override

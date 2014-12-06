@@ -12,6 +12,7 @@ import org.glue.unit.om.GlueModule;
 import org.glue.unit.om.GlueProcess;
 import org.glue.unit.om.GlueModuleFactory;
 import org.glue.unit.om.GlueUnit;
+import org.glue.unit.om.GlueUnitMultiQueue;
 import org.glue.unit.om.TriggerDef 
 import org.apache.log4j.Logger;
 
@@ -19,13 +20,14 @@ import org.apache.log4j.Logger;
  * Object representation for the Glue groovy file.
  */
 @Typed
-class GlueUnitImpl implements GlueUnit {
+class GlueUnitImpl implements GlueUnitMultiQueue {
 	static final Logger log = Logger.getLogger(GlueUnitImpl.class)
 	
 	String name;
 	
 	boolean serial = true
 	int priority = 0;
+    String queue = "default";
 	
 	Map<String,GlueProcess> processes;
 	Set<String> requiredModules;
@@ -54,6 +56,10 @@ class GlueUnitImpl implements GlueUnit {
 				priority = 0
 			}
 		}
+        
+        if(config?.queue){
+            queue = config?.queue
+        }
 		
 		if(config?.serial){
 			try{

@@ -20,6 +20,7 @@ import org.glue.unit.log.GlueExecLoggerProvider
 import org.glue.unit.om.GlueContext
 import org.glue.unit.om.GlueContextBuilder
 import org.glue.unit.om.GlueUnit
+import org.glue.unit.om.GlueUnitMultiQueue
 import org.glue.unit.om.GlueUnitBuilder
 import org.glue.unit.process.DefaultJavaProcessProvider
 import org.glue.unit.repo.GlueUnitRepository
@@ -38,21 +39,23 @@ class QueuedExecServiceImpl implements GlueExecutor, WorkflowsStatus{
 	static final Logger log = Logger.getLogger(QueuedExecServiceImpl.class)
 
 	/**
-	 * Lists the GlueUnit(s) that are actively in execution.
+     * key = uuid
+	 * Lists the GlueUnit(s) that are running OR queued.
 	 */
 	final Map<String, GlueContext> executingUnits = new ConcurrentHashMap<String, GlueContext>()
-
-	/**
-	 * only used for testing
-	 */
-	Map<String, Throwable> errors = new ConcurrentHashMap<String, Throwable>()
-	
 	
 	/**
 	 * key = name
+     * This is running OR queued.
 	 */
 	final ConcurrentHashMap<String, GlueContext> runningWorkflows = new ConcurrentHashMap<String, GlueContext>()
 	
+
+    /**
+     * only used for testing
+     */
+    Map<String, Throwable> errors = new ConcurrentHashMap<String, Throwable>()
+    
 	/**
 	 * Set to true for errors to be logged
 	 */
@@ -310,7 +313,12 @@ class QueuedExecServiceImpl implements GlueExecutor, WorkflowsStatus{
 			unitId=java.util.UUID.randomUUID().toString();
 		}
 		
-		def qw = new QueuedWorkflow(unit.name, unitId, params, unit.priority);
+		def qw;
+        if(unit instanceof GlueUnitMultiQueue){
+            qw = new QueuedWorkflow(unit.name, unitId, params, ((GlueUnitMultiQueue)unit).queue, unit.priority);
+        }else{
+            qw = new QueuedWorkflow(unit.name, unitId, params, unit.priority);
+        }
 		def context = contextBuilder.build(unitId, unit, params)
 		
 		if(!execActor.canAdd(qw) || runningWorkflows.putIfAbsent(unit.name, context) != null) {

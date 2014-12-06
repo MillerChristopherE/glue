@@ -20,6 +20,7 @@ import org.glue.unit.log.GlueExecLoggerProvider
 import org.glue.unit.om.GlueContext
 import org.glue.unit.om.GlueContextBuilder
 import org.glue.unit.om.GlueUnit
+import org.glue.unit.om.GlueUnitMultiQueue
 import org.glue.unit.om.GlueUnitBuilder
 import org.glue.unit.process.DefaultJavaProcessProvider
 import org.glue.unit.repo.GlueUnitRepository
@@ -35,60 +36,22 @@ import org.glue.unit.exec.WorkflowsStatus
 class QueuedExecServiceMultiQueueImpl implements GlueExecutor, WorkflowsStatus{
 
 
-	static final Logger log = Logger.getLogger(QueuedExecServiceImpl.class)
+	static final Logger log = Logger.getLogger(QueuedExecServiceMultiQueueImpl.class)
 
-	/**
-     * key = uuid
-	 * Lists the GlueUnit(s) that are running OR queued.
-	 */
-	final Map<String, GlueContext> executingUnits = new ConcurrentHashMap<String, GlueContext>()
-	
-	/**
-	 * key = name
-     * This is running OR queued.
-	 */
-	final ConcurrentHashMap<String, GlueContext> runningWorkflows = new ConcurrentHashMap<String, GlueContext>()
-	
+    protected GlueUnitRepository glueUnitRepository
 
-    /**
-     * only used for testing
-     */
-    Map<String, Throwable> errors = new ConcurrentHashMap<String, Throwable>()
+    protected GlueUnitBuilder glueUnitBuilder
     
 	/**
-	 * Set to true for errors to be logged
+	 * key = queue name
 	 */
-	boolean retainErrors = false
-
-	/**
-	 * Atomic variable to indicate shutdown
-	 */
-	AtomicBoolean isUnderShutdown = new AtomicBoolean(false)
-
-	CountDownLatch shutdownLatch = new CountDownLatch(1)
-
-	/**
-	 * Abstract concept to how and where the GlueUnit definitions are stored.
-	 */
-	GlueUnitRepository glueUnitRepository
-
-	GlueUnitBuilder glueUnitBuilder
-
-	/**
-	 * Actor from which each glue workflow is exected as a separate java process
-	 */
-	WorkflowExecActor execActor
-
-	int maxGlueProcesses
-
-	/**
-	 * Injected. Allows this class to generate a context for the workflow before execution.
-	 * The workflow will get executed in another java process with its own context.
-	 */
-	GlueContextBuilder contextBuilder;
+    protected Map<String, QueuedExecServiceImpl> queues = new HashMap<String, QueuedExecServiceImpl>()
 	
-	ConfigObject config;
-	
+    public static class QueueInfo{
+        public String name;
+        public int maxRunningWorkflows;
+    }
+    
 	/**
 	 * 
 	 * @param maxGlueProcesses the max number of glue processes allowed to run at any time
@@ -96,74 +59,62 @@ class QueuedExecServiceMultiQueueImpl implements GlueExecutor, WorkflowsStatus{
 	 * @param glueUnitBuilder
 	 */
 	@Typed(TypePolicy.MIXED)
-	public QueuedExecServiceImpl(int maxGlueProcesses, Map<String, String> config, Collection<String> javaOpts, Collection<String> classPath, GlueUnitRepository glueUnitRepository,
+	public QueuedExecServiceMultiQueueImpl(List<QueueInfo> qinfos, Map<String, String> config, Collection<String> javaOpts, Collection<String> classPath, GlueUnitRepository glueUnitRepository,
 	GlueUnitBuilder glueUnitBuilder,
-	String execConf,
+    String execConf,
 	String moduleConf,
 	GlueExecLoggerProvider logProvider = null, GlueContextBuilder contextBuilder = null) {
-		this.maxGlueProcesses = maxGlueProcesses
+    
 		this.glueUnitRepository = glueUnitRepository
 		this.glueUnitBuilder = glueUnitBuilder
-		this.contextBuilder = contextBuilder
-
-		//create the default java process provider
-		DefaultJavaProcessProvider provider = new DefaultJavaProcessProvider(config)
-
-		if(classPath){
-			classPath.each{ provider.classpath << it }
-		}else{
-			provider.addCurrentClassPath()
-		}
-
-		javaOpts.each { provider.javaOpts << it }
-
-		provider.mainClass = WorkflowRunner.class.name
-
-		//create the WorkflowExecActor that will control the glue workflow process execution
-		//each process launches an instance of the Workflowrunner
-		execActor = new WorkflowExecActor(
-				maxGlueProcesses,
-				provider,
-				execConf,
-				moduleConf,
-				logProvider
-				)
-
-		def closure = { executingUnits.remove(it.uuid); runningWorkflows.remove(it.name); }
-		execActor.onErrorListener = { wf, t ->
-			runningWorkflows.remove(wf.name)
-			executingUnits.remove(wf.uuid)
-			
-			if(retainErrors){
-				errors[wf.uuid] = t
-			}
-		}
-		execActor.onExecCompletedListener = closure
-
-		execActor.start()
+        
+        qinfos.each{ qinfo ->
+            log.info("Adding queue $qinfo.name with $qinfo.maxRunningWorkflows max running workflows")
+            assert !queues[qinfo.name], "Duplicate queue found"
+            queues[qinfo.name] = new QueuedExecServiceImpl(
+                qinfo.maxRunningWorkflows,
+                config,
+                javaOpts,
+                classPath,
+                glueUnitRepository,
+                glueUnitBuilder,
+                execConf,
+                moduleConf,
+                logProvider,
+                contextBuilder
+            )
+        }
+        log.info("Setup ${qinfos.size()} queues")
+        if(!queues["default"]){
+            throw new RuntimeException("Did not find default queue")
+        }
 
 	}
 	
 	void terminate(String unitId){
-		execActor.killProcess(unitId)
+        queues.each { k, v -> v.terminate(unitId) }
 	}
 
 
 	List<GlueContext> runningWorkflows(){
-		executingUnits.values().collect { it } as List
+        ArrayList<GlueContext> result = new ArrayList<GlueContext>();
+        queues.each { k, v -> result.addAll(v.runningWorkflows()) }
+        return result
 	}
 	
 	Set<String> queuedWorkflows(){
-		executingUnits.values().findAll { GlueContext ctx -> !execActor?.isWorkflowExecuting(ctx?.unit?.name) }.collect { GlueContext ctx -> ctx.unit.name } as Set
+        Set<String> result = new HashSet<String>();
+        queues.each { k, v -> result.addAll(v.queuedWorkflows()) }
+        return result
 	}
 	
 	
 	GlueState getStatus(String unitId){
-		//via this method we cannot find more information other than running of finished
-		GlueContext ctx = executingUnits[unitId]
-		GlueState state = ctx?.statusManager?.getUnitStatus(unitId)?.status
-
-		return (state)?  state: GlueState.FINISHED
+        def result = queues.findResult{String k, QueuedExecServiceImpl v ->
+            GlueState x = v.getStatus(unitId)
+            return x == GlueState.FINISHED ? null : x;
+        }
+        return result ?: GlueState.FINISHED
 	}
 	
 	public Map<String, UnitExecutor> getUnitList() { [:] }
@@ -174,20 +125,22 @@ class QueuedExecServiceMultiQueueImpl implements GlueExecutor, WorkflowsStatus{
 	 * @return
 	 */
 	GlueContext getContext(String unitId){
-		executingUnits[unitId]
+		return queues.findResult { String k, QueuedExecServiceImpl v -> v.getContext(unitId) }
 	}
 
 
 	double getProgress(String unitId){
-		(executingUnits[unitId]) ? 0.5D : 1D
+        return queues.inject(1.0D, { double acc, String k, QueuedExecServiceImpl v ->
+            return Math.min(acc, v.getProgress(unitId))
+        })
 	}
 
 	void waitFor(String unitId){
-		execActor.waitForProcess(unitId)
+        queues.each { k, v -> v.waitFor(unitId) }
 	}
 
 	void waitFor(String unitId, long time, java.util.concurrent.TimeUnit timeUnit){
-		execActor.waitForProcess(unitId)
+        queues.each { k, v -> v.waitFor(unitId, time, timeUnit) }
 	}
 
 	/**
@@ -195,20 +148,14 @@ class QueuedExecServiceMultiQueueImpl implements GlueExecutor, WorkflowsStatus{
 	 * This method does not wait for shutdown and returns.
 	 */
 	public void shutdown(){
-		//do shutdown
-		isUnderShutdown.set true;
-		shutdownLatch.countDown()
-		execActor.stop()
+		queues.each { k, v -> v.shutdown() }
 	}
 
 	/**
 	 * Start shutdown procedure and wait for all GlueUnits to complete processing
 	 */
 	public void waitUntillShutdown(){
-		println "Waiting for shutdown"
-		shutdownLatch.await()
-		execActor.awaitTermination(10, TimeUnit.SECONDS)
-		println "End Waiting for shutdown"
+        queues.each { k, v -> v.waitUntillShutdown() }
 	}
 
 	/**
@@ -218,10 +165,6 @@ class QueuedExecServiceMultiQueueImpl implements GlueExecutor, WorkflowsStatus{
 	@Override
 	public String submitUnitAsName(String unitName,Map<String,Object> params, String unitId = null)
 	throws UnitSubmissionException {
-		String unitFileName=unitName
-		if(isUnderShutdown.get()) {
-			throw new UnitSubmissionException("Cannot accept jobs, server is scheduled for shutdown")
-		}
 
 		if(glueUnitRepository == null){
 			throw new UnitSubmissionException("No repository was defined for this GlueExecutor therefore GlueUnit(s) cannot be submit by name ")
@@ -273,80 +216,21 @@ class QueuedExecServiceMultiQueueImpl implements GlueExecutor, WorkflowsStatus{
 
 
 	/**
-	 * All submit methods delegate work to this method for the actual execution of a GlueUnit.<br/>
-	 * A GlueUnitImpl instance is created from the ConfigObject (this represents the GlueUnit).
-	 * <p/>
-	 * This method:<br/>
-	 * <ul>
-	 *  <li> Creates a GlueUnitImpl instance from the ConfigObject</li>
-	 *  <li> Creates a ParallelUnitExecutor instance from the GlueUnitImpl</li>
-	 *  <li> Calls the execute method on the PrallelUnitExecutor </li>
-	 *  <li> On any error during the previous stages a UnitSubmissionException is thrown</li>
-	 *
-	 * </ul>
-	 *
-	 * ThreadSafety.
-	 * This method needs to be synchronized and kept thread safe.
-	 * Decisions like should the work flow run when serial etc needs to be done in a serial fashion. 
-	 *
-	 * @param config ConfigObject representing the textual form of the GlueUnit
-	 * @param params Map properties for the GlueUnit
-	 * @return String the GlueUnit execution UUID
+	 * See QueuedExecServiceImpl.submit
 	 */
 	protected synchronized String submit(GlueUnit unit,Map<String,Object> params, String unitId = null)
 	throws UnitSubmissionException {
-
-		//throw an exception if the server is shutting down
-		if(isUnderShutdown.get()){
-			throw new UnitSubmissionException("Server is shutting down")
-		}
-
-		if(unit.isSerial() && execActor.isWorkflowExecuting(unit.name)){
-			//reject execution and leave no trace except for a 0 uid
-			println "Rejecting execution request. Workflow ${unit.name} has been marked as serial and is still running"
-			return "0";
-		}
-
-		if(!unitId){
-			//create a unique id that will represent this GlueUnit instance's execution
-			unitId=java.util.UUID.randomUUID().toString();
-		}
-		
-		def qw = new QueuedWorkflow(unit.name, unitId, params, unit.priority);
-		def context = contextBuilder.build(unitId, unit, params)
-		
-		if(!execActor.canAdd(qw) || runningWorkflows.putIfAbsent(unit.name, context) != null) {
-			println "Workflow ${unit.name} already in queue to run"
-			return "0";
-		}
-		
-		//set an initial status
-		UnitStatus unitStatus = new UnitStatus(status:GlueState.WAITING)
-		unitStatus.unitId = unitId
-		unitStatus.name = unit.name
-		//start by setting the unit status to waiting
-		unitStatus.startDate = new Date()
-		context.statusManager?.setUnitStatus(unitStatus)
-		context.logger?.out unitId
-
-		try{
-
-			//if the workflow is a trigger workflow any files needs to be set here.
-			executingUnits[unitId] = context
-			
-			execActor.add(qw)
-			
-			
-			return unitId;
-		}
-		catch(UnitSubmissionException t) {
-			throw t
-		}catch(Throwable t) {
-
-			unitStatus.status = GlueState.FAILED
-			context.statusManager?.setUnitStatus(unitStatus)
-
-			throw new UnitSubmissionException("Error while parsing ${unit?.name}", t)
-		}
+        String queueName = "default";
+        if(unit instanceof GlueUnitMultiQueue){
+            queueName = ((GlueUnitMultiQueue)unit).queue
+        }
+        QueuedExecServiceImpl queue = queues[queueName];
+        if(!queue){
+            println "Workflow ${unit.name} cannot run, no such queue $queueName"
+            return "0"
+        }
+        log.info("Submitting workflow ${unit.name} to queue $queueName")
+        return queue.submit(unit, params, unitId)
 	}
+    
 }
