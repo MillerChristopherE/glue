@@ -6,11 +6,11 @@
 	<parent>
 		<artifactId>glue-parent</artifactId>
 		<groupId>org.glue</groupId>
-		<version>0.2.0</version>
+		<version>0.6.0</version>
 	</parent>
 	<groupId>org.glue</groupId>
 	<artifactId>glue-rest</artifactId>
-	<version>0.5.1</version>
+	<version>0.6.0</version>
 	<name>glue-rest</name>
 	<url>http://maven.apache.org</url>
 	<properties>

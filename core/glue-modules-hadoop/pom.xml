@@ -6,16 +6,16 @@
 	<parent>
 		<artifactId>glue-parent</artifactId>
 		<groupId>org.glue</groupId>
-		<version>0.2.0</version>
+		<version>0.6.0</version>
 	</parent>
 	<groupId>org.glue</groupId>
 	<artifactId>glue-modules-hadoop</artifactId>
-	<version>0.5.1</version>
+	<version>0.6.0</version>
 	<name>glue-modules-hadoop</name>
 	<url>http://maven.apache.org</url>
 	<properties>
 		<hadoop.version>1.0.4</hadoop.version>
-		<dep.version>0.5.0</dep.version>
+		<dep.version>0.6.0</dep.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
 	<dependencies>

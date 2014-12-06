@@ -5,7 +5,7 @@
 	<parent>
 		<artifactId>glue-parent</artifactId>
 		<groupId>org.glue</groupId>
-		<version>0.2.0</version>
+		<version>0.6.0</version>
 	</parent>
 
 	<properties>
@@ -23,7 +23,7 @@
 	<groupId>org.glue</groupId>
 	<artifactId>glue-trigger</artifactId>
 	<name>glue-trigger</name>
-	<version>0.5.1</version>
+	<version>0.6.0</version>
 
 	<dependencies>
 		<dependency>

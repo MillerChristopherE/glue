@@ -6,15 +6,15 @@
 	<parent>
 		<artifactId>glue-parent</artifactId>
 		<groupId>org.glue</groupId>
-		<version>0.2.0</version>
+		<version>0.6.0</version>
 	</parent>
 	<groupId>org.glue</groupId>
 	<artifactId>glue-modules-gcloud</artifactId>
-	<version>0.5.1</version>
+	<version>0.6.0</version>
 	<name>glue-modules-gcloud</name>
 	<url>http://maven.apache.org</url>
 	<properties>
-		<dep.version>0.5.0</dep.version>
+		<dep.version>0.6.0</dep.version>
         <!--<bigquery.version>v2-rev159-1.19.0</bigquery.version>-->
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>

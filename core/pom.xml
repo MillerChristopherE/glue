@@ -4,7 +4,7 @@
 	<groupId>org.glue</groupId>
 	<artifactId>glue-parent</artifactId>
 	<packaging>pom</packaging>
-	<version>0.2.0</version>
+	<version>0.6.0</version>
 	<name>glue-parent</name>
 	<url>org.glue</url>
 
