@@ -115,9 +115,9 @@ class LauncherConfig {
 		
 		//--- Max processes that can run at any time
 		def executorMaxProcesses
-		
 		if(execConfig.executorMaxProcesses){
 			executorMaxProcesses = Integer.valueOf(execConfig.executorMaxProcesses)
+            LOG.warn("executorMaxProcesses is deprecated, please use queues = 'default:$executorMaxProcesses'")
 		}else{
 			executorMaxProcesses = Runtime.getRuntime().availableProcessors() + 1
 		}
