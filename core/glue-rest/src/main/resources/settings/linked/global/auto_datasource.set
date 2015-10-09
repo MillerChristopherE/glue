@@ -29,6 +29,11 @@ datasourceInfoObject = { nameOrObj, wantDS = true ->
             throw new RuntimeException("Invalid data info object name '" + name + "'");
         }
         dio = evaluate("return current." + name);
+        if(dio instanceof CharSequence)
+        {
+            // Support strings as references.
+            return current.datasourceInfoObject(dio);
+        }
         if(!dio || !(dio instanceof Map))
         {
             throw new RuntimeException("Data info object not found '" + name + "'");
@@ -97,6 +102,17 @@ autoCopy = { from, to ->
     {
         throw new RuntimeException("Data source '" + toInfo.type + "' does not support transfer");
     }
+    
+    // Date transfer.
+    if(fromInfo.date)
+    {
+        toInfo.date = fromInfo.date
+    }
+    toInfo.params = toInfo.params instanceof Map ? toInfo.params : [:];
+    current.setDateParams(toInfo.date, toInfo.params)
+    //fromInfo.params = fromInfo.params instanceof Map ? fromInfo.params : [:];
+    //current.setDateParams(fromInfo.date, fromInfo.params)
+    
     if(toInfo.clean)
     {
         current.autoClean(to);
@@ -107,12 +123,12 @@ autoCopy = { from, to ->
     if(current.dryrun && !toInfo.dryrunAllow
         && (!toInfo.dryrunAllowWrite || !toInfo.dryrunAllowWrite(fromInfo, toInfo)))
     {
-        println "dryrun: not copying $from to $to (!$to.dryrunAllowWrite)"
+        println "dryrun: not copying $from to $to (!${to}.dryrunAllowWrite)"
     }
     else if(current.dryrun && !toInfo.dryrunAllow
         && (!fromInfo.dryrunAllowRead || !fromInfo.dryrunAllowRead(fromInfo)))
     {
-        println "dryrun: not copying $from to $to (!$from.dryrunAllowRead)"
+        println "dryrun: not copying $from to $to (!${from}.dryrunAllowRead)"
     }
     else
     {
@@ -121,5 +137,11 @@ autoCopy = { from, to ->
         // Don't do this first so that the transfer has first chance.
         current.obtainTransferSchema(fromInfo, toInfo);
     }
+}
+
+
+autoEachLine = { from, callback ->
+    def fromInfo = current.datasourceInfoObject(from);
+    fromInfo.ds.eachLine(fromInfo, callback)
 }
 

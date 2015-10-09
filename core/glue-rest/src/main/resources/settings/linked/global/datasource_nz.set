@@ -11,12 +11,18 @@ datasource_nz_glue
     }
     
     transfer = { from, to ->
+        def sch = null;
         def batchRecords = to.batchRecords ?: 1000 * 1000;
         def delim = to.delimiter ?: "\t";
+        def ctrlChars = to.ctrlChars ?: false
+        def ignoreZero = to.ignoreZero ?: false
+        def maxErrors = to.maxErrors ?: 0
+        def using = to.using ?: "DELIM '$delim' RemoteSource 'JDBC' CTRLCHARS $ctrlChars IGNOREZERO $ignoreZero MAXERRORS $maxErrors"
         if(!to.table)
         {
             throw new RuntimeException("Table not specified for ${to.name} (${to.name}.table)");
         }
+        using = current.doSqlReplacements(using, to.params instanceof Map ? to.params : [:]);
         def tempTableName = "z_ds_temp_" + to.table;
         try
         {
@@ -26,7 +32,6 @@ datasource_nz_glue
         catch(Exception edrop)
         {
         }
-        glueContext.sql.updateSql(to.db, "create table $tempTableName as select * from ${to.table} where 1=0 distribute on random;");
         def f = File.createTempFile(tempTableName, ".nz");
         def fpath = f.getAbsolutePath();
         def fout = null;
@@ -39,11 +44,35 @@ datasource_nz_glue
                 insert into $tempTableName
                     SELECT * FROM EXTERNAL '$fpath'
                     SAMEAS $tempTableName
-                    USING
-                        (DELIM '$delim' RemoteSource 'JDBC')
+                    USING ($using)
                 ;""");
         }
         from.ds.eachLine from, { line ->
+            if(sch == null)
+            {
+                sch = current.obtainTransferSchema(from, to);
+                assert sch != null;
+                if(true)
+                {
+                    def create = current._sqlCreate(to, sch);
+                    if(create)
+                    {
+                        create << " DISTRIBUTE ON ${to.distribute ?: 'random'}";
+                        try
+                        {
+                            if(!capabilities.contains('quiet')) println "Attempting: $create"
+                            glueContext.sql.execSql(set.db, create);
+                            if(!capabilities.contains('quiet')) println "Table created"
+                        }
+                        catch(Exception ecreate)
+                        {
+                            // Allow it to fail if it exists already.
+                            if(!capabilities.contains('quiet')) println "Table not created, it may exist already"
+                        }
+                    }
+                }
+                glueContext.sql.updateSql(to.db, "create table $tempTableName as select * from ${to.table} limit 0 distribute on random;");
+            }
             if(nrecords >= batchRecords)
             {
                 doBatch();
@@ -59,7 +88,7 @@ datasource_nz_glue
         {
             doBatch();
         }
-        glueContext.sql.updateSql(to.db, "insert into ${to.name} select * from $tempTableName;");
+        glueContext.sql.updateSql(to.db, "insert into ${to.table} select * from $tempTableName;");
         glueContext.sql.updateSql(to.db, "drop table $tempTableName;");
     }
     

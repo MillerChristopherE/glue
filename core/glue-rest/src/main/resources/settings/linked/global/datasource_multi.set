@@ -1,0 +1,35 @@
+// type = "multi"
+// multi = [ "data1", "data2", "data3" ]
+// When reading from a multi, it reads from all the data sources.
+// When writing to a multi, it writes the full data set to each and every location.
+// A multi can either read-only or it can write-only; if it did both you would get exponential data copies.
+datasource_multi
+{
+    eachLine = { set, callback ->
+        if(set.writeonly) throw new IOException("Data source '${set.name}' was made write-only");
+        set.readonly = true;
+        set.multi.each { msetname ->
+            def mset = current.datasourceInfoObject(msetname);
+            set.schema = set.schema ?: mset.schema; // Try to get a schema.
+            mset.ds.eachLine(mset, { line ->
+                callback(line);
+            })
+        }
+    }
+    
+    transfer = { from, to ->
+        to.writeonly = true;
+        to.schema = to.schema ?: from.schema; // Try to get a schema.
+        to.multi.each { msetname ->
+            assert from.name != msetname
+            assert to.name != msetname
+            current.autoCopy(from.name, msetname);
+        }
+    }
+    
+    clean = { set ->
+        set.multi.each { msetname ->
+            current.autoClean(msetname);
+        }
+    }
+}

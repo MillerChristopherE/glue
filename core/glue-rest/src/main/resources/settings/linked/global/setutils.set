@@ -1,0 +1,75 @@
+
+doParamReplacements = { text, params, prefix, getValueString={x->x.toString()} ->
+    def xprefix = java.util.regex.Matcher.quoteReplacement(prefix);
+    if(xprefix == "?") xprefix = "\\?"
+    // Fix the parameters. All string.
+    def newparams = params.collectEntries { k, v ->
+        return [ k.toString(), getValueString(v) ]
+    }
+    // Allow params to reference other params.
+    // Since Groovy maps are LinkedHashMap, param dependencies are resolved in order.
+    // For example: [ a:'foo', b:'$a bar', c:'$b baz' ] works only in this order.
+    newparams.each { kvp ->
+        String newval = kvp.value
+        if(newval.indexOf(prefix) != -1)
+        {
+            newparams.each { String k, String v ->
+                newval = newval.replaceAll("$xprefix$k\\b", java.util.regex.Matcher.quoteReplacement(v))
+            }
+            kvp.value = newval
+        }
+    }
+    // Do the text param replacements.
+    newparams.each { String k, String v ->
+        text = text.replaceAll("$xprefix$k\\b", java.util.regex.Matcher.quoteReplacement(v))
+    }
+    return text
+}
+
+// If date is set, params gets: daydate, y, m, d and h if hour is set.
+setDateParams = { date, params ->
+    if(date)
+    {
+        def d = date;
+        def hashour = true;
+        if(date instanceof CharSequence)
+        {
+            try {
+                d = Date.parse("yyyy-MM-dd'T'HH", date);
+            } catch(Exception e1) {
+                try {
+                    d = Date.parse("yyyy-MM-dd HH", date);
+                } catch(Exception e2) {
+                    //try {
+                        d = Date.parse("yyyy-MM-dd", date);
+                        hashour = false;
+                    //} catch(Exception e3) {
+                    //}
+                }
+            }
+        }
+        params['daydate'] = d.format("yyyy-MM-dd");
+        params['y'] = d.format("yyyy");
+        params['m'] = d.format("MM");
+        params['d'] = d.format("dd");
+        if(hashour)
+        {
+            params['h'] = d.format("HH");
+        }
+        else
+        {
+            params.remove('h');
+        }
+    }
+}
+
+/*
+inheritMap = { from, to ->
+    from.each { k, v ->
+        if(!to.containsKey(k))
+        {
+            to[k] = v;
+        }
+    }
+}
+*/

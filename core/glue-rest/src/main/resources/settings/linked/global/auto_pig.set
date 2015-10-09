@@ -1,13 +1,37 @@
 
 // script can be either a file path or a pig script string.
-runPig = { name, script, params=[:] ->
+runPig = { name, script, params=[:], mode = null ->
     if(current.dryrun)
     {
-        println "dryrun: not running pig script $name"
+        if(params.dryrunAllow)
+        {
+            println "dryrun: running pig script $name due to dryrunAllow"
+        }
+        else
+        {
+            println "dryrun: not running pig script $name"
+            if(!current.glueCanUsePigDryrun)
+            {
+                return;
+            }
+            if(!capabilities.contains('quiet')) println "glueCanUsePigDryrun"
+            mode = mode ? "$mode,dryrun" : "dryrun"
+        }
+    }
+    if(script.indexOf("\n") == -1 && script.endsWith(".pig"))
+    {
+        if(!capabilities.contains('quiet')) println "pig: loading script from file $script"
+        script = new File(script).getText();
+    }
+    script = current.doParamReplacements(script, params, '$');
+    newparams = [:] // Blank them out since we used them already.
+    if(mode != null)
+    {
+        glueContext.pig.run(name, script, newparams, mode);
     }
     else
     {
-        glueContext.pig.run(name, script, params);
+        glueContext.pig.run(name, script, newparams);
     }
 }
 
@@ -17,9 +41,74 @@ runPigDirect = { script, name ->
     current.runPig(name, script)
 }
 
+_autoPigLoadSuffix = { pi, set, requirePath = false ->
+    def setname = set.name;
+    if(!set.path)
+    {
+        if(!capabilities.contains('quiet')) println "pig: no input for load '${setname}'.path, not running job"
+        if(pi) pi.stopped = true;
+        return '';
+    }
+    if(set.date)
+    {
+        if(pi) pi.date = set.date;
+    }
+    def suffix = "";
+    if(set.ds.getPigLoadSuffix)
+    {
+        suffix += set.ds.getPigLoadSuffix(set) ?: "";
+    }
+    else if(set.type.startsWith("hdfs"))
+    {
+        if(set.delimiter instanceof CharSequence && set.delimiter != "\t")
+        {
+            suffix += "using PigStorage('${set.delimiter}') ";
+        }
+        if(set.schema)
+        {
+            suffix += "as (${set.schema}) ";
+        }
+    }
+    else
+    {
+        throw new IOException("Pig cannot directly read from ${set.type}, please save it to hdfs first (${set.name})");
+    }
+    return suffix;
+}
+
+_autoPigStoreSuffix = { pi, set ->
+    def setname = set.name;
+    current.datasourceDemandWrite(set);
+    if(set.clean)
+    {
+        current.autoClean(set);
+    }
+    def suffix = "";
+    if(set.ds.getPigStoreSuffix)
+    {
+        suffix += set.ds.getPigStoreSuffix(set) ?: "";
+    }
+    else if(set.type && set.type.startsWith("hdfs"))
+    {
+        if(set.delimiter instanceof CharSequence && set.delimiter != "\t")
+        {
+            suffix += "using PigStorage('${set.delimiter}') ";
+        }
+    }
+    else if(!set.type || set.type == "pig")
+    {
+        // If you don't set a type or you set the script type to pig, you are doing the store yourself.
+    }
+    else
+    {
+        throw new IOException("Pig cannot directly write to ${set.type}, please save it to hdfs first (${set.name})");
+    }
+    return suffix;
+}
+
 autoPig = { piginfo, name = null ->
     def script
-    def pi // The info obj , not always valid!
+    def pi // The info obj, not always valid!
     def pig_params = null;
     if(piginfo =~ /^\w+$/)
     {
@@ -38,7 +127,30 @@ autoPig = { piginfo, name = null ->
         {
             name = piginfo;
         }
+        pi.params = pi.params instanceof Map ? pi.params : [:];
         pig_params = pi.params
+        if(pi.inputs)
+        {
+            for(int i = 0; i < pi.inputs.size(); i++)
+            {
+                def setname = pi.inputs[i];
+                def set = current.datasourceInfoObject(setname);
+                def suffix = current._autoPigLoadSuffix(pi, set);
+                if(!suffix) return;
+                pig_params["${setname}_path"] = set.path;
+                pig_params["${setname}_suffix"] = suffix;
+            }
+        }
+        if(true)
+        {
+            // Now do the store param.
+            def suffix = current._autoPigStoreSuffix(pi, pi);
+            if(pi.path)
+            {
+                pig_params["store_path"] = pi.path;
+            }
+            pig_params["store_suffix"] = suffix ?: "";
+        }
         if(pi.onBeforeRun)
         {
             if(pi.onBeforeRun() == false)
@@ -52,6 +164,12 @@ autoPig = { piginfo, name = null ->
     else
     {
         script = piginfo;
+    }
+    pig_params = pig_params ?: [:];
+    current.setDateParams(pi.date, pig_params); // Set daydate, y, m, etc...
+    if(current.dryrun && pi && pi.dryrunAllow)
+    {
+        pig_params.dryrunAllow = "true";
     }
     def pat = java.util.regex.Pattern.compile(/@(\w+)\(([^\)]*)\)/);
     def m = pat.matcher(script.toString());
@@ -71,29 +189,10 @@ autoPig = { piginfo, name = null ->
                 {
                     def setname = params[0].replace("'", "").replace("\"", ""); // q&d
                     def set = current.datasourceInfoObject(setname);
-                    if(!set.path)
-                    {
-                        if(!capabilities.contains('quiet')) println "pig: no input for @load('$setname'), not running job"
-                        if(pi) pi.stopped = true;
-                        return
-                    }
-                    def loadcmd = " load '${set.path}' ";
-                    if(set.ds.getPigLoadSuffix)
-                    {
-                        loadcmd += set.ds.getPigLoadSuffix(set) ?: "";
-                    }
-                    else if(set.type.startsWith("hdfs"))
-                    {
-                        if(set.schema)
-                        {
-                            loadcmd += "as (${set.schema})";
-                        }
-                    }
-                    else
-                    {
-                        throw new IOException("Pig cannot directly read from ${set.type}, please save it to hdfs first (${set.name})");
-                    }
-                    m.appendReplacement(newscript, java.util.regex.Matcher.quoteReplacement(loadcmd.toString()))
+                    def suffix = current._autoPigLoadSuffix(pi, set);
+                    if(!suffix) return;
+                    def cmd = " load '${set.path}' $suffix";
+                    m.appendReplacement(newscript, java.util.regex.Matcher.quoteReplacement(cmd.toString()))
                 }
                 break;
             
@@ -107,28 +206,10 @@ autoPig = { piginfo, name = null ->
                     def relation = params[0].replace("'", "").replace("\"", ""); // q&d
                     def setname = params[1].replace("'", "").replace("\"", ""); // q&d
                     def set = current.datasourceInfoObject(setname);
-                    current.datasourceDemandWrite(set);
-                    if(set.clean)
-                    {
-                        current.autoClean(setname);
-                    }
-                    def storecmd = " store $relation into '${set.path}' ";
-                    if(set.ds.getPigStoreSuffix)
-                    {
-                        storecmd += set.ds.getPigStoreSuffix(set) ?: "";
-                    }
-                    else if(set.type.startsWith("hdfs"))
-                    {
-                        if(set.delimiter instanceof CharSequence && set.delimiter != "\t")
-                        {
-                            storecmd += "using PigStorage('${set.delimiter}')";
-                        }
-                    }
-                    else
-                    {
-                        throw new IOException("Pig cannot directly write to ${set.type}, please save it to hdfs first (${set.name})");
-                    }
-                    m.appendReplacement(newscript, java.util.regex.Matcher.quoteReplacement(storecmd.toString()));
+                    def suffix = current._autoPigStoreSuffix(pi, set);
+                    if(!suffix) return;
+                    def cmd = " store $relation into '${set.path}' $suffix";
+                    m.appendReplacement(newscript, java.util.regex.Matcher.quoteReplacement(cmd.toString()));
                 }
                 break;
             
@@ -138,6 +219,6 @@ autoPig = { piginfo, name = null ->
     }
     m.appendTail(newscript);
     //if(!capabilities.contains('quiet')) println "runPig \"$newscript\""
-    current.runPig(name.toString(), newscript.toString(), pig_params ?: [:]);
+    current.runPig(name.toString(), newscript.toString(), pig_params);
 }
 

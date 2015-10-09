@@ -10,8 +10,13 @@ datasource_list
     
     transfer = { from, to ->
         def result = new ArrayList<List>();
-        def sch = current.obtainTransferSchema(from, to)
+        def sch = null;
         from.ds.eachLine from, { line ->
+            if(sch == null)
+            {
+                // Gives the source a chance to set its schema on-demand.
+                sch = current.obtainTransferSchema(from, to);
+            }
             result << current.parseLineUsingSchema(line, sch, from.delimiter);
         }
         to.data = result;

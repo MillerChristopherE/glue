@@ -6,7 +6,7 @@ datasource_sql_glue
         def delim = set.delimiter ?: "\t";
         def query = current.buildQuerySQL(set);
         StringBuilder sb = new StringBuilder();
-        glueContext.sql.eachSqlResult set.db, query, { row ->
+        glueContext.sql.eachSqlResult set.db ?: 'nz', query, { row ->
             int cols = row.getMetaData().getColumnCount();
             sb.setLength(0);
             for(int i = 0; i < cols; i++)
@@ -26,14 +26,37 @@ datasource_sql_glue
         {
             throw new RuntimeException("Table not specified for ${to.name} (${to.name}.table)");
         }
-        def sch = current.obtainTransferSchema(from, to);
+        def sch = null;
         def maxInsertsPerCall = 300;
         int nrecords = 0;
         def buf = new StringBuilder();
         from.ds.eachLine from, { line ->
+            if(sch == null)
+            {
+                sch = current.obtainTransferSchema(from, to);
+                assert sch != null;
+                if(true)
+                {
+                    def create = current._sqlCreate(to, sch);
+                    if(create)
+                    {
+                        try
+                        {
+                            if(!capabilities.contains('quiet')) println "Attempting: $create"
+                            glueContext.sql.execSql(set.db ?: 'nz', create);
+                            if(!capabilities.contains('quiet')) println "Table created"
+                        }
+                        catch(Exception ecreate)
+                        {
+                            // Allow it to fail if it exists already.
+                            if(!capabilities.contains('quiet')) println "Table not created, it may exist already"
+                        }
+                    }
+                }
+            }
             if(nrecords >= maxInsertsPerCall || buf.length() > 1024 * 30)
             {
-                glueContext.sql.updateSql(to.db, buf.toString());
+                glueContext.sql.updateSql(to.db ?: 'nz', buf.toString());
                 buf.setLength(0);
                 nrecords = 0;
             }
@@ -58,13 +81,17 @@ datasource_sql_glue
                 {
                     buf << x;
                 }
-                else if(x)
+                else if(x instanceof Boolean)
                 {
-                    buf << '"' << x.toString().replace("'", "''") << '"';
+                    buf << (x ? "true" : "false");
+                }
+                else if(x == null)
+                {
+                    buf << "null";
                 }
                 else
                 {
-                    buf << "null";
+                    buf << '"' << x.toString().replace("'", "''") << '"';
                 }
             }
             buf << ")";
@@ -72,7 +99,7 @@ datasource_sql_glue
         }
         if(nrecords > 0)
         {
-            glueContext.sql.updateSql(to.db, buf.toString());
+            glueContext.sql.updateSql(to.db ?: 'nz', buf.toString());
         }
     }
     
@@ -82,6 +109,8 @@ datasource_sql_glue
         {
             throw new IOException("Cannot clean on SQL data source without WHERE clause: ${set.name}.where");
         }
+        set.params = set.params instanceof Map ? set.params : [:];
+        def params = set.params;
         if(where instanceof List)
         {
             def sbexpr = new StringBuilder();
@@ -101,10 +130,72 @@ datasource_sql_glue
             throw new RuntimeException("Cannot clean on SQL data source with HAVING clause: ${set.name}.having")
         }
         def q = "delete from ${set.table} where ${set.where};";
+        q = current.doSqlReplacements(q, params);
         //if(!capabilities.contains('quiet')) println "Clean: $q";
-        glueContext.sql.updateSql(set.db, q);
+        glueContext.sql.updateSql(set.db ?: 'nz', q);
     }
     
+}
+
+
+_schemaToDDL = { set, sch ->
+    return sch.inject(new StringBuilder(), { sb, col ->
+        if(sb.length() > 0) sb << ",";
+        def name = col[0];
+        def type = col[1];
+        
+        sb << name
+        sb << " ";
+        
+        if(set.types[name])
+        {
+            sb << set.types[name]
+        }
+        else if(set.types[type])
+        {
+            sb << set.types[type]
+        }
+        else if(type == "string")
+        {
+            sb << "varchar(255)"
+        }
+        else
+        {
+            sb << type
+        }
+        
+        if(col.size() > 2 && col[2] == "nullable")
+        {
+        }
+        else
+        {
+            sb << " NOT NULL"
+        }
+    }).toString()
+}
+
+
+_sqlCreate = { set, sch ->
+    if(set.create != false)
+    {
+        // Note: only do this if explicit schema or create,
+        // because we want the correct SQL data types.
+        if(set.schema || (set.create == true && sch))
+        {
+            def create = "CREATE TABLE ${set.table} ("
+            if(set.schema)
+            {
+                create << "${set.schema.replaceAll(':', ' ')}"
+            }
+            else
+            {
+                create << current._schemaToDDL(set, sch);
+            }
+            create << ")"
+            return create;
+        }
+    }
+    return null;
 }
 
 
@@ -116,21 +207,43 @@ datasource_sql_conf
 }
 */
 
+doSqlReplacements = { text, params ->
+    //text = current.doParamReplacements(text, params, '?');
+    text = current.doParamReplacements(text, params, '@', { x ->
+        if(x == null)
+        {
+            return "NULL";
+        }
+        if(x instanceof Number)
+        {
+            return x.toString();
+        }
+        if(x instanceof Boolean)
+        {
+            return x ? "TRUE" : "FALSE";
+        }
+        return "'" + x.toString().replace("'", "''") + "'"
+    });
+    return text
+}
 
 // Directly uses query if present, OR:
 // Required properties: table
 // Optional properties: columns, where, group, having, order, limit
 // Also optional: distinct = true
 // If columns is not present, they can be derived from schema, otherwise * is used.
+// ? replacements are resolved.
 buildQuerySQL = { set ->
-    if(!set.table)
-    {
-        throw new RuntimeException("Table name not specified in ${set.name?:"?"} (${set.name?:"?"}.table)");
-    }
+    set.params = set.params instanceof Map ? set.params : [:];
+    def params = set.params;
     if(set.query instanceof CharSequence)
     {
         // query is used directly if specified.
-        return set.query;
+        return current.doSqlReplacements(set.query, params);
+    }
+    if(!set.table)
+    {
+        throw new RuntimeException("Table name not specified in ${set.name?:"?"} (${set.name?:"?"}.table)");
     }
     def sbexpr = new StringBuilder();
     def getexprlist = { name, exprdelim = "," ->
@@ -216,7 +329,7 @@ buildQuerySQL = { set ->
     }
     String query = sb.toString();
     if(!capabilities.contains('quiet')) println("Query: $query");
-    return query;
+    return current.doSqlReplacements(query, params);
 }
 
 
